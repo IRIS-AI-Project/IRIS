@@ -878,7 +878,8 @@ def test_coding_settings_and_task_api_contract(monkeypatch, tmp_path: Path) -> N
 def test_docker_availability_accepts_successful_cli_and_image(monkeypatch, tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
-    runner = DockerSandboxRunner(coding_settings(tmp_path, project))
+    settings = coding_settings(tmp_path, project)
+    runner = DockerSandboxRunner(settings)
 
     commands: list[list[str]] = []
 
@@ -895,7 +896,7 @@ def test_docker_availability_accepts_successful_cli_and_image(monkeypatch, tmp_p
     assert availability.image_available is True
     assert availability.sandbox_available is True
     assert availability.reason is None
-    assert commands[1][-1] == "neuroasist-coding:latest"
+    assert commands[1][-1] == settings.coding_docker_image
 
 
 def test_docker_runner_adds_latest_to_an_untagged_image_name(tmp_path: Path) -> None:

@@ -18,6 +18,7 @@ from apps.backend.app.api.routes.voice import router as voice_router
 from apps.backend.app.agents.character.agent import CharacterAgent
 from apps.backend.app.context.manager import ContextManager
 from apps.backend.app.documents import DocumentService, extract_document
+from apps.backend.app.events.bus import EventBus
 from apps.backend.app.llm.base import ChatMessage
 from apps.backend.app.reminders import ReminderArguments, ReminderService, reminder_request_from_context, reminder_skill
 from apps.backend.app.storage.timeline import TimelineStore, TimelineHistoryAdapter
@@ -30,6 +31,7 @@ from tests.test_search_recovery import History, ReplayLLM
 def product_app(tmp_path):
     store = TimelineStore(tmp_path / "test.sqlite3"); store.init_db()
     app = FastAPI()
+    app.state.event_bus = EventBus()
     app.state.timeline_store = store
     app.state.settings = SimpleNamespace(episodes_enabled=True)
     app.state.runtime_settings = SimpleNamespace(developer_mode_enabled=False, voice_language="ru", voice_tts_voice="ru_f1")

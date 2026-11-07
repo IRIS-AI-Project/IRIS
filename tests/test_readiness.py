@@ -1,24 +1,9 @@
 import asyncio
 
 from fastapi.testclient import TestClient
-from types import SimpleNamespace
 
 from apps.backend import main as backend_main
 from apps.backend.app.core.config import Settings
-
-
-class FailingTtsService:
-    def __init__(self, settings: Settings) -> None:
-        self.tts_provider = SimpleNamespace(name=settings.voice_tts_provider)
-
-    def available_tts_voices(self) -> list[str]:
-        return ["ru_f1"]
-
-    async def preload_tts(self) -> None:
-        raise RuntimeError("test tts failure")
-
-    def clear_tts_audio(self) -> int:
-        return 0
 
 
 def test_safe_mode_skips_all_voice_model_initialization_and_finishes_readiness(monkeypatch, tmp_path):
@@ -114,7 +99,11 @@ def test_readiness_degrades_voice_without_blocking_text(monkeypatch, tmp_path) -
         voice_vad_provider="energy",
     )
     monkeypatch.setattr(backend_main, "get_settings", lambda: settings)
-    monkeypatch.setattr(backend_main, "VoiceService", FailingTtsService)
+
+    async def fail_preload(self) -> None:
+        raise RuntimeError("test tts failure")
+
+    monkeypatch.setattr(backend_main.VoiceService, "preload_tts", fail_preload)
 
     with TestClient(backend_main.create_app()) as client:
         async def wait_for_voice():
