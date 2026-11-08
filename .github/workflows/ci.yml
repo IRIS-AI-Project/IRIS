@@ -29,9 +29,12 @@ jobs:
       - name: Install locked Python runtime
         run: |
           python -m pip install --upgrade pip
+          python -m pip install -r requirements/torch-cpu.txt
           python -m pip install -r requirements.txt
           python scripts/check_python_dependencies.py --profile runtime --profile dev
       - name: Run backend regression suite
+        env:
+          HF_HUB_OFFLINE: "1"
         run: python -m pytest -q
 
   web:
