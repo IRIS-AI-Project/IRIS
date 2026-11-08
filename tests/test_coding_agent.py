@@ -2,6 +2,7 @@ import asyncio
 import sqlite3
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -920,8 +921,9 @@ def test_runner_finds_per_user_docker_desktop_cli_when_path_is_stale(monkeypatch
     runner = DockerSandboxRunner(coding_settings(tmp_path, project))
 
     monkeypatch.setattr(runner_module.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(runner_module.os, "name", "nt")
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(
+        runner_module, "os", SimpleNamespace(name="nt", environ={"LOCALAPPDATA": str(tmp_path)}),
+    )
 
     assert runner._docker_executable() == str(cli)
 
