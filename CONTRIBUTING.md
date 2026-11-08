@@ -13,14 +13,16 @@
 1. **Выберите базу.** Сейчас новые задачи начинаются от `origin/v0.9.1`.
    `main` пока показывает старую версию. После согласованного перехода
    базой для новых задач станет `origin/main`.
-2. **Начните в отдельной ветке.** Короткое имя помогает найти работу,
-   например `codex/fix-voice-stop`. Проверьте `git status --short --branch`.
+2. **Начните в отдельной ветке.** Назовите её по задаче. Для исправлений
+   используйте `fix/`, для новых возможностей — `feat/`, для документации —
+   `docs/`, для обслуживания репозитория — `chore/`.
+   Проверьте `git status --short --branch`.
    Если в папке уже есть незавершённые правки, можно создать отдельный worktree.
    Команды запускаются из текущего клона.
 
    ```powershell
    git fetch origin
-   git worktree add -b codex/fix-voice-stop ../Iris-voice-stop origin/v0.9.1
+   git worktree add -b fix/voice-stop ../Iris-voice-stop origin/v0.9.1
    cd ../Iris-voice-stop
    ```
 
