@@ -8,7 +8,7 @@
 
 | Место | Содержимое |
 | :--- | :--- |
-| [bad1and/NeuroAsist](https://github.com/bad1and/NeuroAsist) | Код приложения и Unity, сцена с сохранёнными GUID, инструменты импорта и проверки, открытый workflow сборки приложения |
+| [IRIS-AI-Project/IRIS](https://github.com/IRIS-AI-Project/IRIS) | Код приложения и Unity, сцена с сохранёнными GUID, инструменты импорта и проверки, открытый workflow сборки приложения |
 | `Gogowski/NeuroAsist-avatar-private` (private) | VRM, ограниченные анимации и производные данные, `assets-manifest.json`, workflow Unity |
 | Между сборками | Только `iris-avatar-windows.zip`: готовый Player и манифест файлов |
 | У пользователя | В будущем один EXE-установщик из публичного GitHub Releases |

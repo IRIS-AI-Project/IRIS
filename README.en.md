@@ -6,8 +6,8 @@
 
 # Iris
 
-A voice assistant for Windows: talk through an idea, work through a problem, or just have a conversation.<br>
-Iris remembers useful details from your conversations; an optional avatar can sit beside the dialogue.
+Iris is a voice assistant for Windows. Think through an idea out loud, work through a problem, or just have a chat.<br>
+She remembers useful details so you can come back to them later. Her avatar can sit beside the chat window.
 
 [Русский](README.md) · **English** · [Documentation](Docs/index.md)
 
@@ -23,7 +23,7 @@ Iris remembers useful details from your conversations; an optional avatar can si
 
 Speech recognition and synthesis run on your computer. Replies come from an external model, so conversations need internet access and an API key for your chosen provider.
 
-For now, Iris runs from source. [Release status](Docs/MILESTONES.md).
+Want to try Iris? You can [run her from source](#getting-started). Follow progress on the installer in the [project status](Docs/MILESTONES.md) (Russian).
 
 ## Features
 
@@ -127,8 +127,10 @@ Running from source requires Git, **Python 3.12**, **Node.js 24 / npm 11**. Audi
 
 ### Install dependencies
 
+The current source is on `v0.9.1`. The command below checks out that branch.
+
 ```powershell
-git clone https://github.com/bad1and/NeuroAsist.git Iris
+git clone --branch v0.9.1 https://github.com/IRIS-AI-Project/IRIS.git Iris
 cd Iris
 
 py -3.12 -m venv .venv
@@ -234,6 +236,8 @@ Deleting a memory record and deleting its source message are separate actions. S
 
 ## Development
 
+If you have an idea or want to make a change, start with the [contribution guide](CONTRIBUTING.md) (Russian).
+
 | Directory | Contents |
 | :--- | :--- |
 | `apps/web` | React interface |
@@ -253,7 +257,7 @@ npm --prefix apps/desktop run check
 .\.venv\Scripts\python.exe scripts/check_docs.py
 ```
 
-[Documentation](Docs/index.md) · [Architecture](Docs/architecture.md) · [Contributing](CONTRIBUTING.md) · [Iris design](design.md)
+[Documentation](Docs/index.md) · [Architecture](Docs/architecture.md) · [Iris design](design.md)
 
 The version comes from `VERSION`. Installer builds and pre-publication checks are described in [operations](Docs/operations.md) and the [release runbook](Docs/release-runbook.md). Linked subsystem guides are currently in Russian.
 

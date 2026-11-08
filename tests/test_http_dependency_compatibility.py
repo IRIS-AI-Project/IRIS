@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from apps.backend.app.api.routes.documents import router as documents_router
 from apps.backend.app.api.routes.voice import router as voice_router
 from apps.backend.app.documents import DocumentService
+from apps.backend.app.events.bus import EventBus
 from apps.backend.app.storage.timeline import TimelineStore
 
 
@@ -15,6 +16,7 @@ def test_new_http_stack_spools_document_and_serves_audio_ranges(tmp_path):
     audio = tmp_path / "sample.wav"
     audio.write_bytes(b"RIFF0123456789WAVE")
     app = FastAPI()
+    app.state.event_bus = EventBus()
     app.state.timeline_store = store
     app.state.document_service = DocumentService()
     app.state.voice_service = SimpleNamespace(resolve_audio_path=lambda _: audio)

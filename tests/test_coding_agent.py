@@ -2,6 +2,7 @@ import asyncio
 import sqlite3
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -878,7 +879,8 @@ def test_coding_settings_and_task_api_contract(monkeypatch, tmp_path: Path) -> N
 def test_docker_availability_accepts_successful_cli_and_image(monkeypatch, tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
-    runner = DockerSandboxRunner(coding_settings(tmp_path, project))
+    settings = coding_settings(tmp_path, project)
+    runner = DockerSandboxRunner(settings)
 
     commands: list[list[str]] = []
 
@@ -895,7 +897,7 @@ def test_docker_availability_accepts_successful_cli_and_image(monkeypatch, tmp_p
     assert availability.image_available is True
     assert availability.sandbox_available is True
     assert availability.reason is None
-    assert commands[1][-1] == "neuroasist-coding:latest"
+    assert commands[1][-1] == settings.coding_docker_image
 
 
 def test_docker_runner_adds_latest_to_an_untagged_image_name(tmp_path: Path) -> None:
@@ -919,8 +921,9 @@ def test_runner_finds_per_user_docker_desktop_cli_when_path_is_stale(monkeypatch
     runner = DockerSandboxRunner(coding_settings(tmp_path, project))
 
     monkeypatch.setattr(runner_module.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(runner_module.os, "name", "nt")
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(
+        runner_module, "os", SimpleNamespace(name="nt", environ={"LOCALAPPDATA": str(tmp_path)}),
+    )
 
     assert runner._docker_executable() == str(cli)
 

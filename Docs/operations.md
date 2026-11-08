@@ -134,14 +134,14 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 Дополнительные проверки окружения:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/check_python_dependencies.py
+.\.venv\Scripts\python.exe scripts/check_python_dependencies.py --profile runtime --profile dev
 .\.venv\Scripts\python.exe -m pip check
 npm --prefix apps/web audit --omit=dev --audit-level=high
 npm --prefix apps/desktop audit --omit=dev --audit-level=high
 ```
 
-Для GPU-профиля STT используйте `check_python_dependencies.py --stt-cuda`;
-оговорка о `pip check` описана в [зависимостях](dependencies.md#gigaam-onnx-и-локальное-ускорение-stt).
+Для GPU-профиля STT добавьте `--stt-cuda` к команде проверки зависимостей.
+Особенности `pip check` описаны в [зависимостях](dependencies.md#gigaam-onnx-и-локальное-ускорение-stt).
 
 ### Жизненный цикл ядра
 

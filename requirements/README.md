@@ -11,7 +11,7 @@ is a separate artifact, never an accidental property of the build machine.
 
 `stt-cuda.txt` is an optional Windows development add-on for GigaAM ONNX FP32.
 After installing the base profile, uninstall CPU `onnxruntime`, then install
-this add-on and validate with `check_python_dependencies.py --stt-cuda`.
+this add-on and pass `--stt-cuda` to the development environment check below.
 CPU and GPU ONNX Runtime wheels must not coexist: they share one module.
 This add-on does not change PyTorch/TeraTTS and is not bundled in the CPU release.
 
@@ -25,9 +25,9 @@ The supported Windows release script always recreates
 PyInstaller input, so packages left from experiments cannot leak into an
 installer.
 
-Run `python scripts/check_python_dependencies.py` to verify that the active
-environment satisfies the resolved graph. Release packaging runs it with
-`--strict`, which also rejects every undeclared installed package.
+Run `python scripts/check_python_dependencies.py --profile runtime --profile dev`
+to verify the development environment. Release packaging checks the runtime
+and build profiles with `--strict`, which also rejects undeclared packages.
 
 `qwen-asr` and `qwen-tts` are benchmark-only optional integrations and are not
 part of the supported Iris 1.0 runtime. Their benchmark scripts intentionally

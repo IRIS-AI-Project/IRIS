@@ -63,7 +63,7 @@ npm ci
 npm ci --prefix apps/web
 npm ci --prefix apps/desktop
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-.\.venv\Scripts\python.exe scripts/check_python_dependencies.py
+.\.venv\Scripts\python.exe scripts/check_python_dependencies.py --profile runtime --profile dev
 .\.venv\Scripts\python.exe -m pip check
 ```
 
@@ -78,7 +78,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 py -3.12 -m venv .venv-clean
 .\.venv-clean\Scripts\python.exe -m pip install -r requirements/torch-cpu.txt
 .\.venv-clean\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv-clean\Scripts\python.exe scripts/check_python_dependencies.py
+.\.venv-clean\Scripts\python.exe scripts/check_python_dependencies.py --profile runtime --profile dev
 .\.venv-clean\Scripts\python.exe -m pip check
 ```
 
@@ -96,7 +96,7 @@ ONNX-провайдер. Для текущего GigaAM ONNX достаточн�
 ```powershell
 .\.venv\Scripts\python.exe -m pip uninstall -y onnxruntime
 .\.venv\Scripts\python.exe -m pip install -r requirements/stt-cuda.txt
-.\.venv\Scripts\python.exe scripts/check_python_dependencies.py --stt-cuda
+.\.venv\Scripts\python.exe scripts/check_python_dependencies.py --profile runtime --profile dev --stt-cuda
 .\.venv\Scripts\python.exe -m pip check
 ```
 

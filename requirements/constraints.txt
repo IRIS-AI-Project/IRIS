@@ -34,6 +34,7 @@ gigaam==0.2.0
 googleapis-common-protos==1.75.0
 grpcio==1.82.1
 h11==0.16.0
+hf-xet==1.8.0; platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "arm64" or platform_machine == "aarch64"
 httpcore==1.0.9
 httpx==0.28.1
 httptools==0.9.0
@@ -132,6 +133,7 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
 urllib3==2.8.0
 uvicorn==0.52.4
+uvloop==0.23.0; sys_platform != "win32" and sys_platform != "cygwin" and platform_python_implementation != "PyPy"
 websocket-client==1.9.0
 websockets==16.0
 watchfiles==1.3.0

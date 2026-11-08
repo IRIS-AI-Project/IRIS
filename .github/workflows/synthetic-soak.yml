@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version-file: .python-version
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -29,8 +29,9 @@ jobs:
       - name: Install locked Python runtime
         run: |
           python -m pip install --upgrade pip
+          python -m pip install -r requirements/torch-cpu.txt
           python -m pip install -r requirements.txt
-          python scripts/check_python_dependencies.py
+          python scripts/check_python_dependencies.py --profile runtime --profile dev
       - name: Run synthetic release soak
         run: python scripts/live_conversation_soak.py --release --output artifacts/live-soak.json
       - name: Upload soak evidence

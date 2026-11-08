@@ -18,6 +18,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!apps/web/src/lib/
+!apps/web/src/lib/**
 lib64/
 parts/
 sdist/
@@ -151,6 +153,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+/.venv-clean/
 env/
 venv/
 ENV/

@@ -68,8 +68,8 @@ Unity собирается отдельно в закрытом репозито
 
 | Workflow | Запуск | Результат |
 | :--- | :--- | :--- |
-| `Documentation` | PR и `main` | Версии, параметры окружения, локальные ссылки и изображения |
-| `CI` | PR и `main` | Backend pytest, Vitest/build и Windows Rust check |
+| `Documentation` | PR, `main`, `v0.9.1` | Версии, параметры окружения, локальные ссылки и изображения |
+| `CI` | PR, `main`, `v0.9.1` | Backend pytest, Vitest/build и Windows Rust check |
 | `Synthetic lifecycle soak` | Еженедельно и вручную | Одночасовой отчёт состояний, отмены и роста памяти |
 | `Public avatar source boundary` | PR, `main`, `v0.9.1` | Запрет исходных моделей и частных анимаций в публичном дереве |
 | `Build Windows application candidate` | Вручную с private run ID и SHA-256 | Каталог приложения AppOnly с проверенным Unity Player; без NSIS и публикации |
