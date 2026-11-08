@@ -2,9 +2,34 @@ import re
 
 
 _ABBREVIATION_RE = re.compile(
-    r"(?<!\w)(?:т\.\s*[дпек]\.|(?:г|ул|рис|стр|им|руб|коп)\.)(?!\w)",
+    r"(?<!\w)(?:т\.\s*[дпек]\.|(?:гг?|ул|рис|стр|им|руб|коп)\.)(?!\w)",
     re.IGNORECASE,
 )
+
+GROUPED_INTEGER = r"(?<![\w.,])[1-9]\d{0,2}(?:[ \u00a0\u202f\u2009]\d{3})+(?!\w)"
+_NUMERIC_TOKEN = rf"(?:{GROUPED_INTEGER}|\d+)(?:[.,]\d+)*"
+_NUMBER_CONTEXT = re.compile(
+    rf"(?<!\w)(?:(?:в|во|к|до|от|с|за|на|сегодня|завтра|вчера)\s+)?{_NUMERIC_TOKEN}"
+    rf"(?:\s*(?:[-–—]|до\b|по\b)\s*{_NUMERIC_TOKEN})?"
+    r"(?:\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)"
+    r"(?:\s+\d{4}\b)?)?"
+    r"(?:[ \t]*(?:год(?:а|у|ом|ы|ах)?\b|гг?\.(?!\w)|кг\b|км\b|см\b|мм\b|[%₽$€]))?",
+    re.IGNORECASE,
+)
+_PENDING_NUMBER_CONTEXT = re.compile(
+    rf"{_NUMBER_CONTEXT.pattern}(?:[ \t]+\w*|[ \t]*[-–—][ \t]*)\Z",
+    re.IGNORECASE,
+)
+
+
+def _protect_number_boundaries(text: str, *, partial: bool = False) -> str:
+    """Mask potential split points within a number and its spoken context."""
+    def mask(match: re.Match[str]) -> str:
+        return re.sub(r"[ \t\u00a0\u202f\u2009—–]", "∯", match.group())
+
+    if partial:
+        text = _PENDING_NUMBER_CONTEXT.sub(mask, text)
+    return _NUMBER_CONTEXT.sub(mask, text)
 
 
 def protect_sentence_boundaries(text: str) -> str:
@@ -118,8 +143,8 @@ class TextChunker:
         minimum = self._first_target if not self._emitted else self._next_target
         if not re.search(r"\w", self._buffer):
             return []
-        if re.search(r"\d[.,]$", self._buffer):
-            return []  # A decimal/date/version can continue in the next delta.
+        if re.search(r"\d(?:[.,:/]|\s+|\s*[-—–]\s*)$", self._buffer):
+            return []  # A date, range or grouped number can continue in the next delta.
         boundary = self._find_boundary()
         if boundary is not None:
             return [self._take(boundary)]
@@ -149,8 +174,8 @@ class TextChunker:
             if boundary is not None and self._fits(self._buffer[:boundary]):
                 chunks.append(self._take(boundary))
                 continue
-            if len(self._buffer) > self._max_chars or len(self._buffer.split()) > self._max_words:
-                end = self._split_at_limit(self._buffer)
+            if not self._fits(self._buffer):
+                end = self._split_at_limit(self._buffer, partial=True)
                 if end == len(self._buffer) and not self._buffer[-1].isspace():
                     break  # A long token may still be arriving; do not bisect it.
                 chunks.append(self._take(end))
@@ -161,7 +186,7 @@ class TextChunker:
         return [chunk for chunk in chunks if re.search(r"\w", chunk)]
 
     def _find_boundary(self, start: int = 0, *, allow_terminal: bool = True) -> int | None:
-        protected = protect_sentence_boundaries(self._buffer)
+        protected = protect_sentence_boundaries(_protect_number_boundaries(self._buffer, partial=not allow_terminal))
         if not allow_terminal:
             protected = re.sub(r"[.!?…;:,—–]+[\"'»)]*$", lambda m: "∯" * len(m.group()), protected)
         target = self._first_target if not self._emitted else self._next_target
@@ -193,11 +218,12 @@ class TextChunker:
             return min(eligible, key=lambda item: (item[0], item[1]))[2]
         return min(matches, key=lambda item: (item[0], item[1]))[2] if matches else None
 
-    def _split_at_limit(self, text: str) -> int:
+    def _split_at_limit(self, text: str, *, partial: bool = False) -> int:
         if self._fits(text):
             return len(text)
         char_limit = min(self._max_chars, self._word_limit_index(text))
-        prefix = text[: char_limit + 1]
+        protected = _protect_number_boundaries(text, partial=partial)
+        prefix = protected[: char_limit + 1]
         for match in reversed(list(re.finditer(r"[—–;:,](?=\s)", prefix))):
             if match.start() >= max(1, char_limit // 2):
                 return match.end()
@@ -205,7 +231,7 @@ class TextChunker:
         if spaces:
             return spaces[-1].start() or spaces[-1].end()
         # The limit is a target for natural speech, never a reason to cut a word.
-        space = re.search(r"\s", text)
+        space = re.search(r"\s", protected)
         return space.start() if space else len(text)
 
     def _fits(self, text: str) -> bool:

@@ -1,19 +1,20 @@
 """Russian text preparation for TeraTTSv2.
 
 TeraTTSv2 requires balanced language tags.  The application deliberately sends
-one Russian span for Iris instead of mixing ``<ru>`` and ``<en>`` fragments:
-technical English is rendered through a small pronunciation lexicon, while
-ordinary numbers are left for the model's native ``num2words`` expansion.
+one Russian span for Iris. Numbers are expanded before inference, including
+digit runs inside identifiers that the model's own normalizer skips.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from decimal import Decimal, InvalidOperation
+from datetime import date
 
 from num2words import num2words
+
 from apps.backend.app.voice.lexicon import split_pronunciation_overrides
+from apps.backend.app.voice.text import GROUPED_INTEGER
 
 
 _MONTHS = (
@@ -22,62 +23,45 @@ _MONTHS = (
 )
 _MONTH_RE = "(" + "|".join(_MONTHS) + ")"
 
-_DAY_GENITIVE = {
-    1: "первого", 2: "второго", 3: "третьего", 4: "четвёртого",
-    5: "пятого", 6: "шестого", 7: "седьмого", 8: "восьмого",
-    9: "девятого", 10: "десятого", 11: "одиннадцатого",
-    12: "двенадцатого", 13: "тринадцатого", 14: "четырнадцатого",
-    15: "пятнадцатого", 16: "шестнадцатого", 17: "семнадцатого",
-    18: "восемнадцатого", 19: "девятнадцатого", 20: "двадцатого",
-    21: "двадцать первого", 22: "двадцать второго", 23: "двадцать третьего",
-    24: "двадцать четвёртого", 25: "двадцать пятого", 26: "двадцать шестого",
-    27: "двадцать седьмого", 28: "двадцать восьмого", 29: "двадцать девятого",
-    30: "тридцатого", 31: "тридцать первого",
-}
-_DAY_ACCUSATIVE = {
-    day: word.replace("-ого", "-ое").replace("-его", "-ее").replace("ого", "ое").replace("его", "ее")
-    for day, word in _DAY_GENITIVE.items()
-}
-_DAY_ACCUSATIVE.update({3: "третье", 23: "двадцать третье"})
-_DAY_DATIVE = {
-    1: "первому", 2: "второму", 3: "третьему", 4: "четвёртому",
-    5: "пятому", 6: "шестому", 7: "седьмому", 8: "восьмому",
-    9: "девятому", 10: "десятому", 11: "одиннадцатому",
-    12: "двенадцатому", 13: "тринадцатому", 14: "четырнадцатому",
-    15: "пятнадцатому", 16: "шестнадцатому", 17: "семнадцатому",
-    18: "восемнадцатому", 19: "девятнадцатому", 20: "двадцатому",
-    21: "двадцать первому", 22: "двадцать второму", 23: "двадцать третьему",
-    24: "двадцать четвёртому", 25: "двадцать пятому", 26: "двадцать шестому",
-    27: "двадцать седьмому", 28: "двадцать восьмому", 29: "двадцать девятому",
-    30: "тридцатому", 31: "тридцать первому",
-}
-_VERSION_DIGITS = {
-    "0": "ноль", "1": "один", "2": "два", "3": "три", "4": "четыре",
-    "5": "пять", "6": "шесть", "7": "семь", "8": "восемь", "9": "девять",
-}
+_YEAR = r"[1-9]\d{2,3}"
+_DIGIT_WORDS = ("ноль", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять")
+# num2words 0.5.14 names groups through 10**30 in Russian.
+_MAX_CARDINAL_DIGITS = 33
+_NUMBER = r"[+-]?\d+(?:[,.]\d+)?"
 
-_CARDINAL_GENITIVE = {
-    "ноль": "нуля", "один": "одного", "одна": "одной", "два": "двух", "две": "двух",
-    "три": "трёх", "четыре": "четырёх", "пять": "пяти", "шесть": "шести",
-    "семь": "семи", "восемь": "восьми", "девять": "девяти", "десять": "десяти",
-    "одиннадцать": "одиннадцати", "двенадцать": "двенадцати", "тринадцать": "тринадцати",
-    "четырнадцать": "четырнадцати", "пятнадцать": "пятнадцати", "шестнадцать": "шестнадцати",
-    "семнадцать": "семнадцати", "восемнадцать": "восемнадцати", "девятнадцать": "девятнадцати",
-    "двадцать": "двадцати", "тридцать": "тридцати", "сорок": "сорока",
-    "пятьдесят": "пятидесяти", "шестьдесят": "шестидесяти", "семьдесят": "семидесяти",
-    "восемьдесят": "восьмидесяти", "девяносто": "девяноста", "сто": "ста",
-    "двести": "двухсот", "триста": "трёхсот", "четыреста": "четырёхсот",
-    "пятьсот": "пятисот", "шестьсот": "шестисот", "семьсот": "семисот",
-    "восемьсот": "восьмисот", "девятьсот": "девятисот", "тысяча": "тысячи",
-    "тысячи": "тысяч", "тысяч": "тысяч", "миллион": "миллиона", "миллиона": "миллионов",
-    "миллионов": "миллионов", "миллиард": "миллиарда", "миллиарда": "миллиардов",
-    "миллиардов": "миллиардов",
+_FEMININE_QUANTITIES = {
+    r"минут(?:а|ы|у|е)?": ("минуты", "минут"),
+    r"секунд(?:а|ы|у|е)?": ("секунды", "секунд"),
+    r"недел(?:я|и|ю|е|ь)": ("недели", "недель"),
+    r"страниц(?:а|ы|у|е)?": ("страницы", "страниц"),
+    r"глав(?:а|ы|у|е)?": ("главы", "глав"),
+    r"верси[яиюей]": ("версии", "версий"),
+    r"попыт(?:ка|ки|ку|ке|ок)": ("попытки", "попыток"),
+    r"тысяч(?:а|и|у|е)?": ("тысячи", "тысяч"),
 }
+_FEMININE_NOUN = "(?:" + "|".join(_FEMININE_QUANTITIES) + r")\b"
 
-_FEMININE_CARDINAL_NOUNS = (
-    "минута", "минуты", "секунда", "секунды", "неделя", "недели", "страница", "страницы",
-    "глава", "главы", "версия", "версии", "попытка", "попытки", "тысяча", "тысячи",
-)
+_UNITS = {
+    "%": ("процент", "процента", "процентов"),
+    "кг": ("килограмм", "килограмма", "килограммов"),
+    "г": ("грамм", "грамма", "граммов"),
+    "км": ("километр", "километра", "километров"),
+    "см": ("сантиметр", "сантиметра", "сантиметров"),
+    "мм": ("миллиметр", "миллиметра", "миллиметров"),
+    "л": ("литр", "литра", "литров"),
+    "°c": ("градус Цельсия", "градуса Цельсия", "градусов Цельсия"),
+    "°с": ("градус Цельсия", "градуса Цельсия", "градусов Цельсия"),
+    "°": ("градус", "градуса", "градусов"),
+    "₽": ("рубль", "рубля", "рублей"),
+    "$": ("доллар", "доллара", "долларов"),
+    "€": ("евро", "евро", "евро"),
+}
+_UNIT = "(?:" + "|".join(re.escape(unit) for unit in _UNITS) + r")(?!\w)"
+_CURRENCY_SUBUNITS = {
+    "₽": ("копейка", "копейки", "копеек"),
+    "$": ("цент", "цента", "центов"),
+    "€": ("цент", "цента", "центов"),
+}
 
 _ORDINAL_NEUTER_NOUNS = ("место", "число", "окно", "поле", "задание", "упражнение")
 
@@ -111,6 +95,11 @@ _TECH_LEXICON: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         r"\bUI\b": "Ю+Ай",
         r"\bUX\b": "Ю+Икс",
         r"\bAI\b": "Эй+Ай",
+        r"\bGPT-?4[oо]\b": "джи пи ти четыре о",
+        r"\bGPT-?(?=\d)": "джи пи ти ",
+        r"\bGPT\b": "джи пи ти",
+        r"\b2D\b": "два дэ",
+        r"\b3D\b": "три дэ",
         r"\bbackend\b": "бэк+енд",
         r"\bfrontend\b": "фронт+енд",
         r"\bframework\b": "фреймв+орк",
@@ -149,39 +138,28 @@ def normalize_unicode_for_model(text: str) -> str:
     return normalized.replace("‑", "-").replace("−", "-").replace("\u00ad", "").replace("\u00a0", " ")
 
 
-def _cardinal(value: int, *, feminine: bool = False) -> str:
-    return str(num2words(value, lang="ru", gender="feminine" if feminine else "masculine"))
-
-
-def _cardinal_genitive(value: int) -> str:
-    return str(num2words(value, lang="ru", case="genitive"))
+def _cardinal(value: int, *, feminine: bool = False, case: str = "nominative") -> str:
+    return str(num2words(value, lang="ru", gender="feminine" if feminine else "masculine", case=case))
 
 
 def _ordinal(value: int, *, form: str = "masculine") -> str:
-    words = str(num2words(value, lang="ru", to="ordinal")).split()
-    if not words:
-        return str(value)
-    word = words[-1]
-    irregular = {
-        ("третий", "feminine"): "третья", ("третий", "neuter"): "третье",
-        ("третий", "genitive"): "третьего", ("третий", "dative"): "третьему",
-        ("третий", "prepositional"): "третьем", ("третий", "instrumental"): "третьим",
-    }
-    if (word, form) in irregular:
-        words[-1] = irregular[(word, form)]
-        return " ".join(words)
-    stem, soft = (word[:-2], word.endswith("ий"))
-    endings = {
-        "masculine": "ий" if soft else word[-2:],
-        "feminine": "яя" if soft else "ая",
-        "neuter": "ее" if soft else "ое",
-        "genitive": "его" if soft else "ого",
-        "dative": "ему" if soft else "ому",
-        "prepositional": "ем" if soft else "ом",
-        "instrumental": "им" if soft else "ым",
-    }
-    words[-1] = stem + endings.get(form, word[-2:])
-    return " ".join(words)
+    if form in ("masculine", "feminine", "neuter"):
+        return str(num2words(value, lang="ru", to="ordinal", gender=form))
+    return str(num2words(value, lang="ru", to="ordinal", case=form))
+
+
+def _digit_words(raw: str) -> str:
+    return " ".join(_DIGIT_WORDS[unicodedata.digit(digit)] for digit in raw)
+
+
+def _integer_words(raw: str, *, feminine: bool = False, case: str = "nominative") -> str:
+    digits = raw.lstrip("+-")
+    if len(digits) > _MAX_CARDINAL_DIGITS or (len(digits) > 1 and unicodedata.digit(digits[0]) == 0):
+        sign = "минус " if raw.startswith("-") else ""
+        words = sign + _digit_words(digits)
+    else:
+        words = _cardinal(int(raw), feminine=feminine, case=case)
+    return ("плюс " if raw.startswith("+") else "") + words
 
 
 def _plural(value: int, one: str, few: str, many: str) -> str:
@@ -192,100 +170,109 @@ def _plural(value: int, one: str, few: str, many: str) -> str:
     return one if last == 1 else few if 2 <= last <= 4 else many
 
 
-def _day_words(day: int, case: str) -> str:
-    table = {"genitive": _DAY_GENITIVE, "accusative": _DAY_ACCUSATIVE, "dative": _DAY_DATIVE}[case]
-    return table.get(day, str(day))
+def _is_decimal(raw: str) -> bool:
+    return "." in raw or "," in raw
+
+
+def _genitive_quantity_forms(unit: str | None, noun: str | None) -> tuple[str, str]:
+    if unit:
+        return _UNITS[unit.lower()][1:]
+    return next(forms for pattern, forms in _FEMININE_QUANTITIES.items()
+                if re.fullmatch(pattern, noun or "", re.IGNORECASE))
+
+
+def _day_form(prefix: str | None) -> str:
+    if prefix and prefix.lower() == "к":
+        return "dative"
+    if prefix and prefix.lower() in ("на", "сегодня", "завтра", "вчера"):
+        return "neuter"
+    return "genitive"
 
 
 def normalize_dates(text: str) -> str:
-    def date_words(day: int, month: int, year: int, fallback: str) -> str:
-        if not 1 <= day <= 31 or not 1 <= month <= 12:
-            return fallback
-        return (
-            f"{_day_words(day, 'genitive')} {_MONTHS[month - 1]} "
-            f"{_ordinal(year, form='genitive')} года"
-        )
+    prefix = r"(?:(на|к|сегодня|завтра|вчера)\s+)?"
 
     def replace_numeric_date(match: re.Match[str]) -> str:
-        day, month, year = (int(value) for value in match.groups())
-        return date_words(day, month, year, match.group(0))
-
-    def replace_iso_date(match: re.Match[str]) -> str:
-        year, month, day = (int(value) for value in match.groups())
-        return date_words(day, month, year, match.group(0))
+        prep, year, iso_month, iso_day, day, month, local_year, year_abbreviation = match.groups()
+        year_value = int(year or local_year)
+        month_value = int(iso_month or month)
+        day_value = int(iso_day or day)
+        try:
+            date(year_value, month_value, day_value)
+        except ValueError:
+            return match.group()
+        day_words = _ordinal(day_value, form=_day_form(prep))
+        year_words = _ordinal(year_value, form="genitive")
+        lead = f"{prep} " if prep else ""
+        stop = "." if year_abbreviation and not text[match.end():].strip() else ""
+        return f"{lead}{day_words} {_MONTHS[month_value - 1]} {year_words} года{stop}"
 
     text = re.sub(
-        r"\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b",
-        replace_iso_date,
-        text,
-    )
-    text = re.sub(
-        r"\b(\d{1,2})[./](\d{1,2})[./]((?:19|20)\d{2})\b",
-        replace_numeric_date,
-        text,
+        rf"(?<![\w./-]){prefix}(?:({_YEAR})-(\d{{1,2}})-(\d{{1,2}})|"
+        rf"(\d{{1,2}})[./](\d{{1,2}})[./]({_YEAR}))(?!\w|[./-]\d)(?:\s+(г\.(?!\w)))?",
+        replace_numeric_date, text, flags=re.IGNORECASE,
     )
 
-    def replace_preposition(match: re.Match[str]) -> str:
-        prep, raw_day, month = match.groups()
-        case = "accusative" if prep.lower() == "на" else "dative"
-        return f"{prep} {_day_words(int(raw_day), case)} {month}"
+    def replace_written_date(match: re.Match[str]) -> str:
+        prep, raw_day, month, year, year_word = match.groups()
+        day = int(raw_day)
+        if not 1 <= day <= 31:
+            return match.group()
+        words = _ordinal(day, form=_day_form(prep))
+        result = f"{prep + ' ' if prep else ''}{words} {month}"
+        if year:
+            result += f" {_ordinal(int(year), form='genitive')} года"
+        if year_word and year_word.endswith(".") and not text[match.end():].strip():
+            result += "."
+        return result
 
-    text = re.sub(rf"\b(на|к)\s+(\d{{1,2}})\s+{_MONTH_RE}\b", replace_preposition, text, flags=re.IGNORECASE)
-    text = re.sub(
-        rf"\b(\d{{1,2}})\s+{_MONTH_RE}\b",
-        lambda match: f"{_day_words(int(match.group(1)), 'genitive')} {match.group(2)}",
-        text,
-        flags=re.IGNORECASE,
+    return re.sub(
+        rf"\b{prefix}(\d{{1,2}})\s+{_MONTH_RE}\b"
+        rf"(?:\s+({_YEAR})\b(?:\s+(года\b|г\.(?!\w)))?)?",
+        replace_written_date, text, flags=re.IGNORECASE,
     )
-
-    return text
 
 
 def normalize_years(text: str) -> str:
     """Speak calendar years as ordinals with the case implied by the phrase."""
-    year = r"(?:1[0-9]{3}|2[0-9]{3})"
-
     def replace_range(match: re.Match[str]) -> str:
-        start, end = int(match.group(1)), int(match.group(2))
-        return f"с {_ordinal(start, form='genitive')} по {_ordinal(end)} год"
+        prep, start, end, noun = match.groups()
+        lead = f"{prep} период " if prep and prep.lower() in ("в", "за") else ""
+        start_words = _ordinal(int(start), form="genitive")
+        end_words = _ordinal(int(end))
+        stop = "." if noun.endswith(".") and not text[match.end():].strip() else ""
+        return f"{lead}с {start_words} по {end_words} год{stop}"
 
     text = re.sub(
-        rf"\b(?:(?:с|в|за)\s+)?({year})\s*(?:[-–—]\s*|по\s+)({year})\s+(?:годы|годах|год)\b",
-        replace_range,
-        text,
-        flags=re.IGNORECASE,
+        rf"\b(?:(с|в|за)\s+)?({_YEAR})\s*(?:[-–—]\s*|\s+по\s+)({_YEAR})\s+"
+        r"(годы\b|годах\b|год\b|гг?\.(?!\w))",
+        replace_range, text, flags=re.IGNORECASE,
     )
-    text = re.sub(
-        rf"\b(в|во)\s+({year})(?:[-\s](?:м|ом))?\s+году\b",
-        lambda m: f"{m.group(1)} {_ordinal(int(m.group(2)), form='prepositional')} году",
-        text,
-        flags=re.IGNORECASE,
+
+    def replace_year(match: re.Match[str]) -> str:
+        prep, year, noun = match.groups()
+        year_nouns = {
+            "год": "masculine", "года": "genitive", "году": "prepositional", "годом": "instrumental",
+        }
+        prep_forms = {
+            "в": "prepositional", "во": "prepositional", "к": "dative",
+            "до": "genitive", "с": "genitive", "от": "genitive", "после": "genitive",
+            "за": "masculine", "на": "masculine", "между": "instrumental",
+        }
+        form = year_nouns.get(noun.lower(), "masculine")
+        if noun.lower() in ("г.", "году") and prep:
+            form = prep_forms[prep.lower()]
+        forms = {form: word for word, form in year_nouns.items()}
+        forms["dative"] = "году"
+        stop = "." if noun.endswith(".") and not text[match.end():].strip() else ""
+        lead = f"{prep} " if prep else ""
+        return f"{lead}{_ordinal(int(year), form=form)} {forms[form]}{stop}"
+
+    return re.sub(
+        rf"\b(?:(в|во|к|до|с|от|после|за|на|между)\s+)?({_YEAR})(?:[-\s](?:й|ый|го|ого|м|ом|му|ому|ым))?"
+        r"\s+(год(?:а|у|ом)?\b|г\.(?!\w))",
+        replace_year, text, flags=re.IGNORECASE,
     )
-    text = re.sub(
-        rf"\b(к)\s+({year})(?:[-\s](?:му|ому))?\s+году\b",
-        lambda m: f"{m.group(1)} {_ordinal(int(m.group(2)), form='dative')} году",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        rf"\b(до|с|от)\s+({year})(?:[-\s](?:го|ого))?\s+года\b",
-        lambda m: f"{m.group(1)} {_ordinal(int(m.group(2)), form='genitive')} года",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        rf"\b({year})(?:[-\s](?:й|ый))?\s+год\b",
-        lambda m: f"{_ordinal(int(m.group(1)))} год",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        rf"\b({year})(?:[-\s](?:го|ого))?\s+года\b",
-        lambda m: f"{_ordinal(int(m.group(1)), form='genitive')} года",
-        text,
-        flags=re.IGNORECASE,
-    )
-    return text
 
 
 def normalize_time(text: str) -> str:
@@ -304,7 +291,7 @@ def normalize_time(text: str) -> str:
 
 def normalize_versions(text: str) -> str:
     def words(raw: str) -> str:
-        return " точка ".join(_VERSION_DIGITS.get(part, part) for part in raw.split("."))
+        return " точка ".join(_integer_words(part) for part in raw.split("."))
 
     text = re.sub(
         r"\b(версия|версии|версию|версией|сборка|сборки|релиз)\s+[vV]?(\d+(?:\.\d+)+)\b",
@@ -314,25 +301,30 @@ def normalize_versions(text: str) -> str:
     )
     text = re.sub(r"\b[vV](\d+(?:\.\d+)+)\b", lambda m: f"версия {words(m.group(1))}", text)
     text = re.sub(r"\b(\d+\.\d+(?:\.\d+)+)\b", lambda m: words(m.group(1)), text)
-    return re.sub(r"\b[vV](\d+)\b", lambda m: f"версия {_VERSION_DIGITS.get(m.group(1), m.group(1))}", text)
+    return re.sub(r"\b[vV](\d+)\b", lambda m: f"версия {_integer_words(m.group(1))}", text)
 
 
 def normalize_numeric_ranges(text: str) -> str:
-    """Turn dash ranges into explicit Russian ``от … до …`` constructions."""
-    pattern = r"(?<![\w.])(?:(от|с)\s+)?(-?\d+)\s*[-–—]\s*(-?\d+)(?!\w|\.\d)"
-
+    """Speak both ends in the genitive, including decimal endpoints."""
     def replace(match: re.Match[str]) -> str:
-        prefix = match.group(1)
-        left, right = int(match.group(2)), int(match.group(3))
-        start = prefix.lower() if prefix else "от"
-        return f"{start} {_cardinal_genitive(left)} до {_cardinal_genitive(right)}"
+        prefix, left, right, unit, feminine_noun = match.groups()
+        feminine = bool(feminine_noun)
+        start = _number_words(left, case="genitive", feminine=feminine)
+        end = _number_words(right, case="genitive", feminine=feminine)
+        suffix = ""
+        if unit or feminine_noun:
+            forms = _genitive_quantity_forms(unit, feminine_noun)
+            suffix = " " + (forms[0] if _is_decimal(right) else _plural(int(right), forms[0], forms[1], forms[1]))
+        return f"{prefix or 'от'} {start} до {end}{suffix}"
 
-    text = re.sub(pattern, replace, text, flags=re.IGNORECASE)
+    ending = rf"(?:\s*({_UNIT})|\s+({_FEMININE_NOUN}))?(?!\w|[,.]\d)"
+    text = re.sub(
+        rf"(?<![\w.])(?:(от|с)\s+)?({_NUMBER})\s*[-–—]\s*({_NUMBER}){ending}",
+        replace, text, flags=re.IGNORECASE,
+    )
     return re.sub(
-        r"\b(от|с)\s+(-?\d+)\s+до\s+(-?\d+)\b",
-        lambda m: f"{m.group(1)} {_cardinal_genitive(int(m.group(2)))} до {_cardinal_genitive(int(m.group(3)))}",
-        text,
-        flags=re.IGNORECASE,
+        rf"\b(от|с)\s+({_NUMBER})\s+до\s+({_NUMBER}){ending}",
+        replace, text, flags=re.IGNORECASE,
     )
 
 
@@ -341,14 +333,14 @@ def normalize_ordinals(text: str) -> str:
         "й": "masculine", "ый": "masculine", "ой": "masculine",
         "я": "feminine", "ая": "feminine", "е": "neuter", "ое": "neuter",
         "го": "genitive", "ого": "genitive", "му": "dative", "ому": "dative",
-        "м": "prepositional", "ом": "prepositional", "ым": "instrumental",
+        "м": "prepositional", "ом": "prepositional", "ым": "instrumental", "им": "instrumental",
     }
 
     def replace_suffix(match: re.Match[str]) -> str:
         return _ordinal(int(match.group(1)), form=suffix_forms[match.group(2).lower()])
 
     text = re.sub(
-        r"\b(\d+)\s*-(ый|ой|ая|ое|ого|ому|ым|й|я|е|го|му|ом|м)\b",
+        r"\b(\d+)\s*-(ый|ой|ая|ое|ого|ому|ым|им|й|я|е|го|му|ом|м)\b",
         replace_suffix,
         text,
         flags=re.IGNORECASE,
@@ -374,46 +366,90 @@ def normalize_ordinals(text: str) -> str:
     )
 
 
+def _number_words(raw: str, *, feminine: bool = False, case: str = "nominative") -> str:
+    integer, point, fraction = raw.replace(",", ".").partition(".")
+    if not point:
+        return _integer_words(integer, feminine=feminine, case=case)
+    if len(fraction) >= _MAX_CARDINAL_DIGITS - 3:
+        return f"{_integer_words(integer, case=case)} запятая {_digit_words(fraction)}"
+    whole, numerator = int(integer), int(fraction)
+    sign = "минус " if integer.startswith("-") else "плюс " if integer.startswith("+") else ""
+    whole_words = _cardinal(abs(whole), feminine=True, case=case)
+    whole_noun = _plural(whole, "целая", "целых", "целых")
+    if case == "genitive" and whole_noun == "целая":
+        whole_noun = "целой"
+    numerator_words = _cardinal(numerator, feminine=True, case=case)
+    fraction_plural = abs(numerator) % 10 != 1 or abs(numerator) % 100 == 11
+    denominator = num2words(
+        10 ** len(fraction), lang="ru", to="ordinal", gender="feminine",
+        case="genitive" if fraction_plural else case, plural=fraction_plural,
+    )
+    return f"{sign}{whole_words} {whole_noun} {numerator_words} {denominator}"
+
+
 def normalize_quantities(text: str) -> str:
-    """Expand remaining decimals and integers after contextual rules ran."""
-    def decimal_words(raw: str) -> str:
-        value = Decimal(raw.replace(",", "."))
-        # num2words loses the sign of -0.x when it converts its integer part.
-        sign = "минус " if value < 0 else ""
-        return sign + str(num2words(abs(value), lang="ru"))
+    """Expand quantities with their units and common genitive constructions."""
+    def replace_quantity(match: re.Match[str]) -> str:
+        prep, raw, unit, feminine_noun = match.groups()
+        case = "genitive" if prep else "nominative"
+        words = _number_words(raw, feminine=bool(feminine_noun), case=case)
+        currency = unit if unit in _CURRENCY_SUBUNITS else None
+        if currency and re.fullmatch(r"[+-]?\d+[,.]\d{1,2}", raw):
+            words = _currency_words(raw, currency, case)
+        elif unit or (prep and feminine_noun):
+            if _is_decimal(raw) or prep:
+                singular, plural = _genitive_quantity_forms(unit, feminine_noun)
+                noun = singular if _is_decimal(raw) else _plural(int(raw), singular, plural, plural)
+            else:
+                noun = _plural(int(raw), *_UNITS[unit.lower()])
+            words += f" {noun}"
+        elif feminine_noun:
+            words += f" {feminine_noun}"
+        return f"{prep} {words}" if prep else words
 
-    def replace_decimal_percent(match: re.Match[str]) -> str:
-        return f"{decimal_words(match.group(1))} процента"
-
-    text = re.sub(r"(?<![\w.])(-?\d+[,.]\d+)\s*%", replace_decimal_percent, text)
-    text = re.sub(
-        r"(?<![\w.])(-?\d+)\s*%",
-        lambda m: f"{_cardinal(int(m.group(1)))} {_plural(int(m.group(1)), 'процент', 'процента', 'процентов')}",
-        text,
+    return re.sub(
+        rf"(?<![\w.])(?:(более|менее|около|порядка|свыше|до|от|без)\s+)?({_NUMBER})"
+        rf"(?:\s*({_UNIT})|\s+({_FEMININE_NOUN}))?(?!\w|[,.]\d)",
+        replace_quantity, text, flags=re.IGNORECASE,
     )
-    text = re.sub(r"\s*%", " процентов", text)
-    feminine_nouns = "|".join(_FEMININE_CARDINAL_NOUNS)
-    text = re.sub(
-        rf"(?<![\w.])(\d+)\s+({feminine_nouns})(?=\b)",
-        lambda m: f"{_cardinal(int(m.group(1)), feminine=True)} {m.group(2)}",
-        text,
-        flags=re.IGNORECASE,
+
+
+def _currency_words(raw: str, currency: str, case: str) -> str:
+    whole, fraction = raw.lstrip("+-").replace(",", ".").split(".")
+    main, sub = int(whole), int(fraction.ljust(2, "0"))
+    parts = []
+    for value, forms, feminine in (
+        (main, _UNITS[currency], False),
+        (sub, _CURRENCY_SUBUNITS[currency], currency == "₽"),
+    ):
+        if value or (not parts and not sub):
+            if case == "genitive":
+                forms = (forms[1], forms[2], forms[2])
+            parts.append(f"{_cardinal(value, feminine=feminine, case=case)} {_plural(value, *forms)}")
+    sign = "минус " if raw.startswith("-") else "плюс " if raw.startswith("+") else ""
+    return sign + " ".join(parts)
+
+
+def normalize_numeric_notation(text: str) -> str:
+    # Grouped thousands must stay together before dates, ranges and quantities.
+    text = re.sub(GROUPED_INTEGER, lambda m: "".join(m.group().split()), text)
+    text = re.sub(rf"(?<!\w)([$€₽])\s*({_NUMBER})(?!\w|[,.]\d)", r"\2 \1", text)
+    text = re.sub(r"№\s*(?=\d)", "номер ", text)
+    text = re.sub(r"(?<=\d)[²³]", lambda m: {"²": " в квадрате", "³": " в кубе"}[m.group()], text)
+    return re.sub(
+        r"(?<![\w.])(\d+(?:[,.]\d+)?)[eE]([+-]?\d+)(?!\w|[.,]\d)",
+        r"\1 умножить на десять в степени \2", text,
     )
 
-    def replace_decimal(match: re.Match[str]) -> str:
-        raw = match.group(0).replace(",", ".")
-        try:
-            return decimal_words(raw)
-        except (InvalidOperation, ValueError):
-            return match.group(0)
 
-    text = re.sub(r"(?<![\w.])-?\d+[,.]\d+(?!\w|\.\d)", replace_decimal, text)
-    text = re.sub(
-        r"(?<![\w.])-?\d+(?!\w|\.\d)",
-        lambda m: _cardinal(int(m.group(0))),
-        text,
-    )
-    return text
+def expand_remaining_digits(text: str) -> str:
+    """Keep digit runs in identifiers and pronunciation overrides audible."""
+    def replace(match: re.Match[str]) -> str:
+        words = " точка ".join(_integer_words(part) for part in match.group().split("."))
+        return f" {words} "
+
+    text = re.sub(r"\d+(?:\.\d+)*", replace, text)
+    return "".join(f" {_digit_words(ch)} " if ch.isdigit() else ch for ch in text)
 
 
 def normalize_abbreviations(text: str) -> str:
@@ -488,6 +524,10 @@ def normalize_for_teratts(text: str, pronunciations: dict[str, str] | None = Non
     for part, overridden in split_pronunciation_overrides(clean, pronunciations or {}):
         part = normalize_unicode_for_model(part)
         if not overridden:
+            part = normalize_numeric_notation(part)
+            part = re.sub(
+                rf"\d{{{_MAX_CARDINAL_DIGITS + 1},}}", lambda m: f" {_digit_words(m.group())} ", part,
+            )
             part = normalize_dates(part)
             part = normalize_years(part)
             part = normalize_time(part)
@@ -500,7 +540,7 @@ def normalize_for_teratts(text: str, pronunciations: dict[str, str] | None = Non
             part = normalize_abbreviations(part)
         parts.append(part)
     clean = "".join(parts)
-    clean = normalize_punctuation(clean)
+    clean = normalize_punctuation(expand_remaining_digits(clean))
     if not clean:
         raise ValueError("TTS text is empty after normalization")
     return f"<ru>{clean}</ru>"

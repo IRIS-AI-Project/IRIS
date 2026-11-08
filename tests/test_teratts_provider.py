@@ -244,6 +244,55 @@ def test_spoken_numbers_and_abbreviations_keep_their_meaning(source, spoken) -> 
     assert normalize_for_teratts(source).casefold() == f"<ru>{spoken}</ru>".casefold()
 
 
+@pytest.mark.parametrize(("source", "spoken"), [
+    ("2025 год", "две тысячи двадцать пятый год"),
+    ("В 2025 г. вышло обновление.", "В две тысячи двадцать пятом году вышло обновление."),
+    ("К 2025 году", "К две тысячи двадцать пятому году"),
+    ("До 2000 г.", "До двухтысячного года."),
+    ("В 2025–2026 гг.", "В период с две тысячи двадцать пятого по две тысячи двадцать шестой год."),
+    ("5 августа 2026", "пятого августа две тысячи двадцать шестого года"),
+    ("Сегодня 5 августа 2025 г.", "Сегодня пятое августа две тысячи двадцать пятого года."),
+    ("На 05.08.2026", "На пятое августа две тысячи двадцать шестого года"),
+    ("Встреча 05.08.2026 г.", "Встреча пятого августа две тысячи двадцать шестого года."),
+    ("К 29.02.2024", "К двадцать девятому февраля две тысячи двадцать четвёртого года"),
+    ("Релиз v21.12.006", "Релиз двадцать один точка двенадцать точка ноль ноль шесть"),
+    ("Код 0206", "Код ноль два ноль шесть"),
+    ("Ошибка А2026.", "Ошибка А две тысячи двадцать шесть."),
+    ("Сборка CPU12.6.", "Сборка CPU двенадцать точка шесть."),
+    ("GPT4o и 3D", "джи пи ти четыре о и три дэ"),
+    ("Вес 21кг", "Вес двадцать один килограмм"),
+    ("До 21 кг", "До двадцати одного килограмма"),
+    ("Более 200 участников", "Более двухсот участников"),
+    ("1–2 минуты", "от одной до двух минут"),
+    ("от 1,5 до 2,5 кг", "от одной целой пяти десятых до двух целых пяти десятых килограмма"),
+    ("5 000 ₽", "пять тысяч рублей"),
+    ("15\u202f000,50 ₽", "пятнадцать тысяч рублей пятьдесят копеек"),
+    ("−0,01 ₽", "минус одна копейка"),
+    ("$21.50", "двадцать один доллар пятьдесят центов"),
+    ("−0,5 °C", "минус ноль целых пять десятых градуса Цельсия"),
+    ("№404", "номер четыреста четыре"),
+    ("10²", "десять в квадрате"),
+    ("Значение 1e-6.", "Значение один умножить на десять в степени минус шесть."),
+])
+def test_numeric_notation_reaches_teratts_as_words(source: str, spoken: str) -> None:
+    assert normalize_for_teratts(source) == f"<ru>{spoken}</ru>"
+
+
+def test_provider_expands_digits_even_in_a_custom_pronunciation(tmp_path) -> None:
+    dictionary = tmp_path / "pronunciations.json"
+    dictionary.write_text('{"pronunciations": {"код": "А0206"}}', encoding="utf-8")
+    model = FakeTeraModel()
+    provider = TeraTTSProvider(
+        model_loader=lambda: model, warmup=False, pronunciation_dictionary_path=dictionary,
+    )
+    asyncio.run(_collect(provider, TTSRequest(text="Нужен код.", language="ru", voice="ru_f1")))
+    assert model.calls[0]["text"] == "<ru>Нужен А ноль два ноль шесть.</ru>"
+
+
+def test_integer_beyond_the_russian_cardinal_scale_is_read_digit_by_digit() -> None:
+    assert normalize_for_teratts("7" * 34) == "<ru>" + " ".join(["семь"] * 34) + "</ru>"
+
+
 @pytest.mark.parametrize("tempo", [0.7, 0.8, 1.0, 1.2, 1.3])
 def test_duration_scale_honours_the_entire_supported_tempo_range(tempo) -> None:
     provider = TeraTTSProvider(warmup=False)

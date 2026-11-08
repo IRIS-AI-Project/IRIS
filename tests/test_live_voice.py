@@ -379,6 +379,25 @@ def test_chunker_does_not_split_a_decimal_arriving_in_separate_deltas() -> None:
     assert chunks == ["Версия 3.12 работает."]
 
 
+@pytest.mark.parametrize("number", ["5 000 ₽", "в 2025 году", "5 августа 2025 года", "1 — 2 кг", "на 05.08.2026"])
+def test_chunker_keeps_number_context_at_the_limit_even_with_fragmented_deltas(number: str) -> None:
+    chunker = TextChunker(max_chars=33, first_target=26)
+    lead = "Сегодня действительно ровно"
+    chunks = []
+    for character in f"{lead} {number}. Дальше.":
+        chunks.extend(chunker.feed(character))
+    chunks.extend(chunker.flush())
+
+    assert chunks == [lead, f"{number}.", "Дальше."]
+
+
+@pytest.mark.parametrize("unfinished", ["21:", "5 ", "1 — "])
+def test_chunker_waits_for_numeric_continuation_on_idle(unfinished: str) -> None:
+    chunker = TextChunker(first_target=20)
+    assert chunker.feed(f"Будем ждать завтра примерно в {unfinished}") == []
+    assert chunker.flush_idle() == []
+
+
 def test_chunker_protects_fragmented_abbreviations() -> None:
     text = "Затем т. е. объяснила."
     chunker = TextChunker()
