@@ -58,7 +58,7 @@
 }
 .iris-segments.iris-segments > button:is(.active, .is-active, [aria-pressed="true"], [aria-selected="true"]) { color: var(--color-accent-ink); }
 .iris-segments.iris-segments > button:hover:not(:disabled) { color: var(--color-text); }
-.iris-segments.iris-segments > button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.iris-segments > button:focus-visible { outline: none; }
 .iris-segments > button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* The row is stable; only the thumb moves. */
@@ -142,7 +142,6 @@
 }
 .iris-checkbox-face svg { position: relative; z-index: 1; display: block; width: 18px; height: 18px; opacity: 0; }
 .iris-checkbox-face path { fill: none; stroke: var(--color-accent-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.iris-checkbox-input:focus-visible + .iris-checkbox-face { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .iris-checkbox-input:disabled { cursor: not-allowed; }
 .iris-checkbox-input:disabled + .iris-checkbox-face { opacity: .45; }
 
@@ -151,8 +150,16 @@
 .dp-control-set .settings-switch-copy { display: grid; gap: 4px; }
 .dp-control-set .settings-switch-copy strong { font-size: 13px; font-weight: 600; }
 .dp-control-set .settings-switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.dp-control-set .settings-switch-input:focus-visible + .settings-switch { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .dp-checkbox-line { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--color-text-soft); cursor: pointer; }
+
+@media (forced-colors: active) {
+  .iris-segments > button:focus-visible,
+  .iris-checkbox-input:focus-visible + .iris-checkbox-face,
+  .settings-switch-input:focus-visible + .settings-switch {
+    outline: var(--rim-width) solid Highlight;
+    outline-offset: -2px;
+  }
+}
 
 /* Retain the approved button grain; use the shared field recess for depth. */
 .iris-selection-material.dp-lens {

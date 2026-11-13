@@ -35,12 +35,12 @@
   background: var(--surface-field) border-box !important;
   box-shadow: var(--depth-field) !important;
 }
-:is(#root, .app-dialog-host) :is(.search-form, .coding-search-form):has(input:not(:disabled)):is(:hover, :focus-within) {
+:is(#root, .app-dialog-host) :is(.search-form, .coding-search-form):has(input:not(:disabled)):is(:hover, :has(input:focus)):not(:has(button:focus-visible)) {
   border-color: transparent !important;
   box-shadow: var(--rim-halo), var(--depth-field) !important;
   outline: none !important;
 }
-:is(#root, .app-dialog-host) :is(.search-form, .coding-search-form):has(input:not(:disabled)):is(:hover, :focus-within)::after {
+:is(#root, .app-dialog-host) :is(.search-form, .coding-search-form):has(input:not(:disabled)):is(:hover, :has(input:focus)):not(:has(button:focus-visible))::after {
   content: "";
   position: absolute;
   inset: -1px;
@@ -60,12 +60,13 @@
 /* The message plate's SVG follows its existing concave silhouette. */
 .chat-composer .tactile-plate-edge { display: none; }
 .chat-composer .tactile-plate-focus { stroke-width: 6; }
-.chat-composer:has(textarea:not(:disabled)):is(:hover, :focus-within) .tactile-plate-focus { opacity: 1; }
+.chat-composer:has(textarea:not(:disabled)):is(:hover, :has(textarea:focus)):not(:has(button:focus-visible)) .tactile-plate-focus { opacity: 1; }
 
-@media (forced-colors: active) {
-  :is(#root, .app-dialog-host) :is(input, textarea, select, .custom-select-trigger):focus-visible,
-  button.iris-button[data-material]:not([data-material="plain"]):focus-visible {
-    outline: 2px solid Highlight !important;
-    outline-offset: 2px;
+@layer iris-material-reset {
+  @media (forced-colors: active) {
+    :is(#root, .app-dialog-host) :is(input, textarea, select, .custom-select-trigger):focus-visible {
+      outline: var(--rim-width) solid Highlight !important;
+      outline-offset: 2px;
+    }
   }
 }

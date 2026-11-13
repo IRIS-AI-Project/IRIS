@@ -307,7 +307,7 @@
   .is-detached .spotlight-categories > button { flex: 1 1 calc(33.333% - 8px); width: auto; }
   .spotlight-result { gap: 10px; padding-inline: 10px; }
 }
-.search-focus-target { outline: 2px solid var(--color-focus); outline-offset: 5px; }
+.search-focus-target:focus { outline: none; }
 .memory-context-details { width: 100%; max-height: 60vh; overflow: auto; }
 .context-record { padding: 18px 0; }
 .context-record + .context-record { border-top: 1px solid var(--color-rule); }

@@ -40,10 +40,29 @@
 .dp-lens .dp-hover-light { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; corner-shape: inherit; pointer-events: none; opacity: 0; mix-blend-mode: plus-lighter; }
 .dp-lens .dp-hover-spot { position: absolute; inset: -60%; background: radial-gradient(ellipse var(--dp-hover-width, 28%) 48% at center, rgb(255 255 255 / var(--dp-hover-strength, .1)), transparent 100%); }
 .dp-rim { position: absolute; inset: -1px; border-radius: inherit; corner-shape: inherit; pointer-events: none; opacity: 0; box-shadow: var(--rim-halo); }
-.dp-rim::before { content: ""; position: absolute; inset: 0; padding: var(--rim-width); border-radius: inherit; corner-shape: inherit; background: var(--rim-gradient); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; }
-/* Compact materials share the wide button's continuous light field. Multiple
-   inset shadows make a nested square at this scale, so illuminate the face
-   with gradients clipped once by its existing contour instead. */
+.dp-rim::before,
+button.iris-button:is([data-material="plain"], [data-material="joined"]):focus-visible::after,
+.iris-segments > button:focus-visible::after,
+.iris-checkbox-input:focus-visible + .iris-checkbox-face::after,
+.settings-switch-input:focus-visible + .settings-switch::after,
+.custom-select-container:not(.open) > .custom-select-trigger:focus-visible::after,
+.custom-select-container.open:has(> .custom-select-trigger:focus-visible) > .custom-select-popup::after,
+.search-focus-target:focus::after,
+.shortcut-recorder:focus::after {
+  content: ""; position: absolute; inset: -1px; padding: var(--rim-width);
+  border-radius: inherit; corner-shape: inherit; background: var(--rim-gradient);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude; pointer-events: none;
+}
+.dp-rim::before { inset: 0; }
+.iris-segments > button:focus-visible::after { inset: 0; }
+.custom-select-container.open > .custom-select-popup::after {
+  inset: var(--select-shell-top) 0 var(--select-shell-bottom);
+  border-radius: var(--select-shell-radius, var(--radius-control));
+  corner-shape: var(--corner-shape);
+}
+/* Graphite and danger buttons keep the same bevel at every width. Other
+   compact surfaces use gradients clipped once to avoid a square of light. */
 @container lens-material (height <= 80px) and (aspect-ratio <= 3/1) {
   .dp-lens .dp-inner-top {
     box-shadow: none;
@@ -74,6 +93,25 @@
 }
 
 
+/* Square and media-pill icon faces use radial gradients with the exact same
+   plus-lighter / tone-mix colors so inner-edge light never forms a box around icons. */
+:is(.iris-button[data-material-square="true"], .dp-icon, .iris-button-group) > .dp-hover-surface > .dp-material,
+.iris-button-group .dp-joined-half > .dp-material {
+  & > .dp-inner-top {
+    box-shadow: none;
+    opacity: calc(var(--lens-inner-top-alpha) * var(--dp-intensity) * .4);
+    background: radial-gradient(ellipse 130% 95% at var(--dp-light-x, 50%) 26%, var(--dp-light-color), transparent 72%);
+  }
+  & > .dp-inner-bottom {
+    box-shadow: none;
+    background: radial-gradient(ellipse 120% 80% at var(--dp-bloom-x, 50%) 95%, var(--dp-light-color), transparent 76%);
+  }
+  & > .dp-inner-edge {
+    box-shadow: none;
+    background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 44%, color-mix(in srgb, var(--dp-tone) 80%, white) 100%);
+  }
+}
+
 /* Layout stays with each existing control; the shared layers own its finish. */
 :where(button.iris-button[data-material]:not([data-material="plain"])) { position: relative; }
 /* Important declarations in a layer precede legacy unlayered !important
@@ -99,16 +137,14 @@ button.iris-button[data-material]:not([data-material="plain"]) {
   isolation: isolate;
 }
 button.iris-button.dp-accent { color: var(--color-accent-ink) !important; }
-button.iris-button[data-material]:not([data-material="plain"]):focus-visible { outline: none !important; }
+button.iris-button[data-material]:focus-visible { outline: none !important; }
 /* The material rim is also the keyboard focus indicator. */
 button.iris-button[data-material]:not([data-material="plain"]):focus-visible > .dp-rim { opacity: 1 !important; }
 /* Bare actions and joined hit targets have no individual material layers. */
-button.iris-button[data-material="plain"]:focus-visible { position: relative; outline: none !important; }
+button.iris-button[data-material="plain"]:focus-visible { position: relative; }
 button.iris-button:is([data-material="plain"], [data-material="joined"]):focus-visible::after {
-  content: "" !important; position: absolute; inset: -1px; padding: var(--rim-width);
-  border-radius: inherit; corner-shape: inherit; background: var(--rim-gradient);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude; pointer-events: none; box-shadow: var(--rim-halo);
+  content: "" !important;
+  box-shadow: var(--rim-halo);
 }
 button.iris-button[data-material]:not([data-material="plain"]):disabled { opacity: .42 !important; cursor: not-allowed; }
 .iris-button > .dp-hover-surface { z-index: -1; }
@@ -171,5 +207,11 @@ button.iris-button.is-loading:disabled { opacity: 1 !important; }
 .iris-button[data-material-contour] > .dp-hover-surface > .dp-depth::before { content: ""; position: absolute; inset: 0; background: var(--dp-tone); clip-path: var(--button-contour); }
 
 @media (forced-colors: active) {
-  .dp-lens:focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px; }
+  .dp-lens:focus-visible,
+  button.iris-button[data-material]:focus-visible,
+  .search-focus-target:focus,
+  .shortcut-recorder:focus {
+    outline: var(--rim-width) solid Highlight !important;
+    outline-offset: 2px;
+  }
 }

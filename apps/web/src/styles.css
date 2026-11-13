@@ -168,9 +168,14 @@ button { border: 0; color: inherit; cursor: pointer; }
 
 button:disabled { cursor: not-allowed; opacity: .52; }
 
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
-  outline: 3px solid var(--color-focus);
+/* Native focus targets also include scroll regions and links. */
+:where(:focus-visible) {
+  outline: var(--rim-width) solid var(--color-focus);
   outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  :where(:focus-visible) { outline-color: Highlight; }
 }
 
 input, textarea, select {
@@ -277,10 +282,6 @@ select { appearance: auto; }
 }
 .navigation-button:active:not(:disabled), .settings-nav-button:active:not(:disabled) {
   transform: scale(0.96);
-}
-.navigation-button:focus-visible, .settings-nav-button:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -1px;
 }
 .navigation-button.is-active svg, .settings-nav-button.is-active svg {
   color: currentColor;
@@ -1809,11 +1810,6 @@ select { appearance: auto; }
   color: #FFFFFF;
 }
 
-.dock-dual-btn:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -2px;
-}
-
 .dock-dual-btn.recording,
 .dock-dual-btn.is-active {
   background: transparent;
@@ -2008,10 +2004,6 @@ select { appearance: auto; }
   width: 100%;
   max-width: 640px;
   transition: none;
-}
-
-.search-form.compact:focus-within {
-  box-shadow: 0 0 0 1px var(--color-focus, #8a2be2);
 }
 
 .search-form.compact input {
@@ -2879,23 +2871,12 @@ button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
 input,
 textarea,
 select {
   min-height: 44px;
   border: 1px solid var(--color-rule-strong);
   border-radius: var(--radius-sm);
-  outline: 2px solid transparent;
-  outline-offset: 1px;
   color: var(--color-text);
   background: var(--color-base-deep);
 }
@@ -5573,11 +5554,6 @@ body {
   width: 1px;
   height: 1px;
   opacity: 0;
-}
-
-.settings-switch-input:focus-visible + .settings-switch {
-  outline: 3px solid var(--color-focus);
-  outline-offset: 3px;
 }
 
 .settings-switch-input:disabled + .settings-switch,
@@ -10227,12 +10203,12 @@ pre,
   width: 100% !important;
 }
 
-.settings-card input:focus,
+.settings-card input:not([type="range"]):focus,
 .settings-card textarea:focus,
 .settings-card select:focus,
 .settings-card .custom-select:focus-within,
 .settings-card .custom-select-trigger:focus-visible,
-.settings-group input:focus,
+.settings-group input:not([type="range"]):focus,
 .settings-group textarea:focus,
 .settings-group select:focus,
 .settings-group .custom-select-trigger:focus-visible,
@@ -12352,8 +12328,6 @@ button.journal-header-tokens:hover {
 }
 
 .chat-composer-inner .send-button:focus-visible {
-  outline: 2px solid var(--color-accent-ink) !important;
-  outline-offset: 2px;
   opacity: 1;
 }
 
@@ -12369,7 +12343,6 @@ button.journal-header-tokens:hover {
 .settings-city-field input { min-width: 0; flex: 1; }
 .settings-city-field button { flex-shrink: 0; }
 .settings-target-heading { scroll-margin-top: 20px; }
-.settings-target-heading:focus { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 3px; }
 .settings-action-error { color: var(--color-danger-text); font-size: 13px; line-height: 1.5; }
 .settings-environment-prompt { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
 @media (max-width: 600px) {

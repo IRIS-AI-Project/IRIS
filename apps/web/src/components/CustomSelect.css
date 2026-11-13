@@ -113,8 +113,7 @@
 }
 
 .custom-select-trigger:focus-visible {
-  outline: 2px solid var(--color-focus, #8a2be2);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .custom-select-container.disabled .custom-select-trigger {
@@ -230,13 +229,6 @@
   font-weight: 500;
 }
 
-/* Keyboard focus is local to the label, without a frame around the field. */
-.custom-select-trigger:focus-visible .custom-select-value {
-  text-decoration: underline;
-  text-decoration-color: var(--color-focus);
-  text-underline-offset: 4px;
-}
-
 .custom-select-option.dp-lens.selected { --dp-tone: var(--color-accent); }
 
 .custom-select-option.selected.highlighted:not(.disabled),
@@ -270,7 +262,7 @@
 
 @media (forced-colors: active) {
   .custom-select-dropdown { border: 1px solid CanvasText !important; }
-  #root .custom-select-container.open > .custom-select-trigger:focus-visible { outline: 2px solid Highlight !important; }
+  .custom-select-container > .custom-select-trigger:focus-visible { outline: var(--rim-width) solid Highlight !important; outline-offset: 2px; }
   .custom-select-popup::before { background: Canvas; border: 1px solid CanvasText; }
   .custom-select-option > .dp-hover-surface { display: none; }
   .custom-select-option.highlighted { outline: 1px solid Highlight; outline-offset: -1px; }

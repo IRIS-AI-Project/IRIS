@@ -27,10 +27,8 @@
 .shortcut-settings button.shortcut-bind:disabled { opacity: .42; }
 .shortcut-settings button.shortcut-bind.iris-button[aria-expanded="true"] { opacity: 1 !important; --shortcut-bind-fill: transparent; }
 .shortcut-bind[aria-expanded="true"] .shortcut-edit-icon, .shortcut-bind[aria-expanded="true"] .shortcut-key-separator { color: var(--color-accent-ink); opacity: .7; }
-.shortcut-settings button.shortcut-bind:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .shortcut-recorder { grid-column: 1 / -1; min-width: 0; margin-top: 16px; padding: 20px; border-radius: var(--radius-control); corner-shape: var(--corner-shape); background: var(--color-base-deep); }
-.shortcut-recorder:focus { outline: none; }
-.shortcut-recorder:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.shortcut-recorder:focus { position: relative; outline: none; }
 .shortcut-recorder-label { display: block; color: var(--color-text-muted); font-size: 11px; }
 .shortcut-recorder-preview { display: flex; align-items: center; min-height: 44px; margin-top: 4px; color: var(--color-text-soft); font-size: 14px; }
 .shortcut-recorder-preview .shortcut-keys { font-size: 17px; gap: 10px; }

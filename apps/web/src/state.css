@@ -17,7 +17,6 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-rule) transparent;
 }
-.state-dashboard .state-sidebar-panels:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .state-dashboard .state-sidebar-panels > .state-hero-card { flex-shrink: 0; padding: 18px 20px !important; }
 .state-dashboard .state-hero-card { box-shadow: var(--shadow-surface) !important; }
 .state-dashboard .state-hero-card:hover { box-shadow: var(--shadow-surface-hover) !important; }
@@ -62,7 +61,7 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-rule) transparent;
 }
-.state-dashboard .state-timeline-scroll:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -3px; }
+.state-dashboard .state-timeline-scroll:focus-visible { outline-offset: calc(-1 * var(--rim-width)); }
 
 /* Surface materials come from the shared inset-panel rules in styles.css. */
 .state-dashboard .mood-card { isolation: isolate; }
@@ -152,7 +151,6 @@
 .state-dashboard .cause-extra-count { font-variant-numeric: tabular-nums; }
 .state-dashboard .mood-causes ul:focus-visible,
 .state-dashboard .neutral-summary:focus-visible {
-  outline: 2px solid var(--color-focus);
   outline-offset: 4px;
 }
 
