@@ -263,7 +263,7 @@
   padding: 9px 4px;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control-sm);
   corner-shape: var(--corner-shape);
   box-shadow: none;
   color: var(--color-text-muted);

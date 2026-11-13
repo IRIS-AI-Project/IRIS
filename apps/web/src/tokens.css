@@ -152,9 +152,11 @@
   --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   --corner-shape: squircle;
   --corner-smoothing: 60%;
-  --radius-xs: 12px;
-  --radius-sm: 18px;
-  --radius-control-sm: 18px;
+  /* Shared squircle scale: compact labels, controls, inset plates, cards.
+     CSS clamps the radius to the face's size, including short badges. */
+  --radius-xs: 16px;
+  --radius-sm: 22px;
+  --radius-control-sm: 22px;
   --radius-control: 24px;
   --radius-plate: 26px;
   --radius-md: 32px;

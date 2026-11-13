@@ -54,7 +54,7 @@
   width: 410px;
   max-width: 100%;
   padding: 12px 14px 12px 14px;
-  border-radius: 28px !important;
+  border-radius: var(--radius-md) !important;
   corner-shape: squircle;
   background: var(--surface-notification);
   border: none;
@@ -149,7 +149,7 @@
   align-items: center;
   gap: 3px;
   padding: 1px 7px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   corner-shape: squircle;
   background: rgba(255, 255, 255, 0.08);
   border: none;
@@ -272,7 +272,7 @@
   height: 28px;
   min-width: 28px;
   max-width: 28px;
-  border-radius: 10px;
+  border-radius: var(--radius-control-sm);
   corner-shape: squircle;
   padding: 0;
   background: rgba(255, 255, 255, 0.08);
@@ -329,7 +329,7 @@
 
 .notification-details-wrapper {
   margin-top: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-plate);
   corner-shape: squircle;
   background: rgba(0, 0, 0, 0.32);
   border: none;
@@ -360,7 +360,7 @@
   width: 24px;
   height: 24px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-control-sm);
   corner-shape: squircle;
   background: rgba(255, 255, 255, 0.06);
   border: none;
@@ -442,7 +442,7 @@
   box-shadow: 0 1px 1px rgb(0 0 0 / .22), 0 4px 7px -2px rgb(0 0 0 / .24);
 }
 .notification-card .notification-control-btn,
-.notification-card .notification-copy-btn { border-radius: 14px !important; corner-shape: var(--corner-shape); }
+.notification-card .notification-copy-btn { border-radius: var(--radius-control-sm) !important; corner-shape: var(--corner-shape); }
 .notification-card.has-task-progress { padding-bottom: 22px; }
 .notification-card .notification-progress-clip {
   position: absolute; inset: 0;

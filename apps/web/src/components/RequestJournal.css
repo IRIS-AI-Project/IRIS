@@ -49,13 +49,13 @@
 .request-detail-meta > div, .request-detail-numbers > div { display: grid; gap: 7px; min-width: 0; }
 .request-record-details dt { color: var(--color-text-muted); font-size: 11px; font-weight: 400; }
 .request-record-details dd { margin: 0; color: var(--color-text); font-size: 12px; font-weight: 450; line-height: 1.5; overflow-wrap: anywhere; }
-.request-detail-numbers { padding: 20px; border-radius: var(--radius-control-sm); corner-shape: var(--corner-shape); background: var(--color-base-deep); box-shadow: var(--depth-field); }
+.request-detail-numbers { padding: 20px; border-radius: var(--radius-md); corner-shape: var(--corner-shape); background: var(--color-base-deep); box-shadow: var(--depth-field); }
 .request-detail-numbers dd { font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .request-detail-note { margin: -8px 2px 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.7; }
 .request-record-details .request-detail-error { color: var(--color-danger-text); }
 .request-detail-json { display: grid; justify-items: start; gap: 14px; min-width: 0; }
 .request-detail-json > button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 12px; }
-.request-detail-json pre { width: 100%; box-sizing: border-box; max-height: 290px; margin: 0; padding: 18px; overflow: auto; border: 0; border-radius: var(--radius-control-sm); corner-shape: var(--corner-shape); background: var(--color-base-deep); color: var(--color-text-soft); font-family: var(--font-mono); font-size: 11px; line-height: 1.8; }
+.request-detail-json pre { width: 100%; box-sizing: border-box; max-height: 290px; margin: 0; padding: 18px; overflow: auto; border: 0; border-radius: var(--radius-plate); corner-shape: var(--corner-shape); background: var(--color-base-deep); color: var(--color-text-soft); font-family: var(--font-mono); font-size: 11px; line-height: 1.8; }
 
 @container request-journal (max-width: 740px) {
   .request-journal button.request-log-row { grid-template-columns: minmax(0, 1fr) 136px 18px; grid-template-areas: "identity total arrow" "tokens outcome arrow"; gap: 10px 16px; min-height: 96px; padding-block: 14px; }

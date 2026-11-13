@@ -76,7 +76,7 @@
 :is(#root, .app-dialog-host) :is(.journal-badge, .status-tag) {
   min-height: 20px;
   padding: 2px 7px !important;
-  border-radius: 12px !important;
+  border-radius: var(--radius-xs) !important;
   corner-shape: var(--corner-shape);
   font-size: 10.5px !important;
 }

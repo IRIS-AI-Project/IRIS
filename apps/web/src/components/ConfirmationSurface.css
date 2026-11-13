@@ -3,7 +3,7 @@
   --confirmation-icon: var(--color-accent-visual);
   position: relative; isolation: isolate;
   width: 420px; max-width: 100%; padding: 18px;
-  border: 0; border-radius: 28px; corner-shape: var(--corner-shape);
+  border: 0; border-radius: var(--radius-md); corner-shape: var(--corner-shape);
   background: var(--surface-toast);
   box-shadow: var(--depth-toast); overflow: visible; gap: 0;
   animation: none !important; transition: none;
@@ -42,7 +42,7 @@
 }
 .confirmation-surface button.confirmation-close {
   flex: none; width: 28px; height: 28px; min-height: 28px;
-  padding: 0; margin-top: -3px; border-radius: 14px !important;
+  padding: 0; margin-top: -3px; border-radius: var(--radius-control-sm) !important; corner-shape: var(--corner-shape);
 }
 .app-dialog-card.confirmation-surface .notification-header-content { gap: 6px; }
 .app-dialog-card.confirmation-surface .notification-title { font-weight: 650; }

@@ -593,7 +593,7 @@ export function NotificationDevPane({ onNotifyFeedback }: NotificationDevPanePro
                 className="avatar-dev-input"
                 style={{
                   padding: "8px 12px",
-                  borderRadius: 10,
+                  borderRadius: "var(--radius-control)",
                   border: "none",
                   background: "rgba(255, 255, 255, 0.07)",
                   color: "#fff",

@@ -199,7 +199,7 @@
   padding: 8px 12px;
   cursor: pointer;
   color: var(--color-text);
-  border-radius: var(--radius-xs, 16px);
+  border-radius: var(--radius-control-sm);
   corner-shape: squircle;
   transition: none;
   flex-shrink: 0;

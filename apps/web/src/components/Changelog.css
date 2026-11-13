@@ -14,7 +14,7 @@
 .changelog-version-bar { display: flex; align-items: center; gap: 18px; flex-shrink: 0; padding: 16px 24px 12px; }
 .changelog-version-label { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-muted); font: 450 12px/1.5 var(--font-ui); }
 .changelog-version-list { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px; margin: -4px; overflow-x: auto; overscroll-behavior: contain; }
-.changelog-version-list .changelog-version-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex-shrink: 0; min-height: 40px; padding: 10px 17px; border-radius: 17px; corner-shape: var(--corner-shape); font: 550 12px/1.4 var(--font-ui); font-variant-numeric: tabular-nums; }
+.changelog-version-list .changelog-version-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex-shrink: 0; min-height: 40px; padding: 10px 17px; border-radius: var(--radius-control-sm); corner-shape: var(--corner-shape); font: 550 12px/1.4 var(--font-ui); font-variant-numeric: tabular-nums; }
 .changelog-version-button > svg { opacity: .75; }
 .changelog-mobile-select { display: none; }
 .changelog-article { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; outline-offset: -5px; }
@@ -25,13 +25,13 @@
 .changelog-installed { color: var(--color-text-soft); }
 .changelog-release-heading h3 { margin: 16px 0 12px; font: 400 clamp(23px, 2.5vw, 29px)/1.35 var(--font-heading); text-wrap: balance; }
 .changelog-release-heading > p { max-width: 650px; margin: 0; color: var(--color-text-soft); font: 400 13px/1.85 var(--font-ui); text-wrap: pretty; }
-.changelog-highlight { margin-top: 24px; padding: 22px 24px; border-radius: 24px; corner-shape: var(--corner-shape); background: var(--surface-card); box-shadow: var(--shadow-row); }
+.changelog-highlight { margin-top: 24px; padding: 22px 24px; border-radius: var(--radius-card); corner-shape: var(--corner-shape); background: var(--surface-card); box-shadow: var(--shadow-row); }
 .changelog-eyebrow { display: flex; align-items: center; gap: 8px; color: var(--color-text-soft); font: 450 11px/1.6 var(--font-ui); }
 .changelog-dialog .changelog-highlight h4 { margin: 12px 0 9px; font: 550 18px/1.5 var(--font-ui); text-wrap: balance; }
 .changelog-highlight p { margin: 0; color: var(--color-text-soft); font: 400 13px/1.85 var(--font-ui); text-wrap: pretty; }
 .changelog-sections { display: grid; gap: 22px; margin-top: 26px; }
 .changelog-dialog .changelog-section > h4 { display: flex; align-items: center; gap: 11px; margin: 0 0 7px; font: 550 14px/1.5 var(--font-ui); }
-.changelog-section-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 10px; corner-shape: var(--corner-shape); background: rgb(255 255 255 / .045); color: var(--color-text-soft); }
+.changelog-section-icon { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: var(--radius-control-sm); corner-shape: var(--corner-shape); background: rgb(255 255 255 / .045); color: var(--color-text-soft); }
 .changelog-section ul { list-style: none; margin: 0 0 0 39px; padding: 0; }
 .changelog-section li { padding: 12px 0; }
 .changelog-section li + li { border-top: 1px solid var(--color-rule); }
@@ -41,9 +41,9 @@
 .changelog-note > svg { flex-shrink: 0; margin-top: 3px; }
 .changelog-note p { margin: 0; font: 400 11px/1.8 var(--font-ui); text-wrap: pretty; }
 .changelog-figure { margin: 18px 0 0; }
-.changelog-figure img { display: block; width: 100%; height: auto; border-radius: 16px; corner-shape: var(--corner-shape); background: var(--color-base-deep); }
+.changelog-figure img { display: block; width: 100%; height: auto; border-radius: var(--radius-card); corner-shape: var(--corner-shape); background: var(--color-base-deep); }
 .changelog-figure figcaption { margin-top: 9px; font: 400 12px/1.6 var(--font-ui); color: var(--color-text-muted); }
-.changelog-settings-version { align-self: flex-start; padding: 5px 9px; font-size: 12px; color: var(--color-text-soft); background: var(--color-accent-soft); border-radius: 8px; corner-shape: var(--corner-shape); font-variant-numeric: tabular-nums; }
+.changelog-settings-version { align-self: flex-start; padding: 5px 9px; font-size: 12px; color: var(--color-text-soft); background: var(--color-accent-soft); border-radius: var(--radius-xs); corner-shape: var(--corner-shape); font-variant-numeric: tabular-nums; }
 .changelog-settings-card .settings-card-header { justify-content: space-between; }
 .changelog-settings-card .settings-card-actions > button { gap: 10px; }
 .changelog-article :is(h3, h4, h5, p, figcaption) { overflow-wrap: anywhere; }
@@ -57,7 +57,7 @@
   .changelog-mobile-select .custom-select-container { flex: 1; min-width: 0; }
   .changelog-article-inner { padding: 12px 22px 24px; }
   .changelog-release-heading h3 { margin-top: 14px; font-size: 23px; }
-  .changelog-highlight { padding: 20px; border-radius: 22px; }
+  .changelog-highlight { padding: 20px; border-radius: var(--radius-card); corner-shape: var(--corner-shape); }
   .changelog-dialog .changelog-highlight h4 { font-size: 17px; }
   .changelog-release-meta { gap: 8px 12px; font-size: 10px; }
   .changelog-section ul { margin-left: 0; }
