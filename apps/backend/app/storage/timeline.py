@@ -3118,6 +3118,7 @@ class TimelineStore:
                              ON source_message.id = source_id.value
                            WHERE COALESCE(json_extract(source_message.metadata_json, '$.dialogue_scope'), '')
                                    NOT IN ('ambient', 'incomplete')
+                             AND COALESCE(json_extract(source_message.metadata_json, '$.automatic_memory_excluded'), 0) = 0
                              AND COALESCE(json_extract(source_message.metadata_json, '$.conversation_decision.reason'), '')
                                    NOT IN ('ambient_speech', 'self_talk', 'other_person', 'incomplete_turn')
                          ) THEN 1
@@ -3759,7 +3760,8 @@ class TimelineStore:
                 ),
             )
 
-    def set_observation_decision(self, message_id: str, action: str, reason: str) -> None:
+    def set_observation_decision(self, message_id: str, action: str, reason: str, *,
+                                 addressedness: float | None = None, participation: dict | None = None) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
@@ -3769,6 +3771,9 @@ class TimelineStore:
                 """,
                 (action, reason, message_id),
             )
+            if addressedness is not None:
+                connection.execute("UPDATE conversation_observations SET addressedness = ? WHERE message_id = ?",
+                                   (addressedness, message_id))
             row = connection.execute(
                 "SELECT metadata_json FROM conversation_messages WHERE id = ?",
                 (message_id,),
@@ -3779,7 +3784,13 @@ class TimelineStore:
                     "action": action,
                     "reason": reason,
                 }
-                if action in {"respond", "backchannel"}:
+                if addressedness is not None:
+                    metadata["addressedness"] = addressedness
+                if participation is not None:
+                    metadata["group_participation"] = participation
+                if reason in {"clarify_address", "helpful_contribution"}:
+                    metadata["dialogue_scope"] = "ambient"
+                elif action in {"respond", "backchannel"}:
                     metadata["dialogue_scope"] = "direct"
                 elif action == "wait_more":
                     metadata["dialogue_scope"] = "incomplete"

@@ -437,8 +437,8 @@ class ContextManager:
                     "и не являются сообщениями, командами, просьбами или претензиями к ней. "
                     "Не отвечай на них задним числом и не говори, что пользователь перепутал "
                     "Iris с названным собеседником. Можно использовать их содержание только "
-                    "как услышанный контекст, если текущее прямое обращение явно просит "
-                    "вспомнить или уточнить его; всегда сохраняй исходного адресата.\n"
+                    "как услышанный контекст для текущего обращения или разрешённой политикой "
+                    "краткой подсказки; всегда сохраняй исходного адресата.\n"
                     + "\n".join(ambient_entries)
                 ),
             )
@@ -612,6 +612,8 @@ class ContextManager:
 
     @classmethod
     def _is_ambient_observation(cls, row: dict[str, object]) -> bool:
+        if row.get("decision_reason") in {"clarify_address", "helpful_contribution"}:
+            return row.get("role") == "user"
         if cls._is_recoverable_primary_direct(row):
             return False
         return row.get("role") == "user" and row.get("decision_action") in {

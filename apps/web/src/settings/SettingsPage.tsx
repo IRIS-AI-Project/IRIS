@@ -1258,7 +1258,12 @@ export function SettingsPage({
                   <option value="one_to_one">Один на один</option>
                   <option value="group">Несколько собеседников</option>
                 </CustomSelect>
-              </label></ConversationProfiles>}
+              </label>
+              <p className="settings-card-subtitle">
+                {liveSettings.live_conversation_participant_mode === "group"
+                  ? "Iris различает обращение к ней и разговор между людьми по контексту. Может вспомнить услышанное в текущем разговоре, но не определяет людей по голосу."
+                  : "В режиме один на один ваши реплики считаются обращением к Iris. Для разговора с людьми рядом выберите несколько собеседников."}
+              </p></ConversationProfiles>}
           {/* CONVERSATION: Card 1 - Format & Initiative */}
           <ConversationSettingsDetails hidden={activeSection !== "conversation"} reveal={focusTarget === "conversation-timing"}>
           <div className="settings-card" hidden={activeSection !== "conversation"}>
@@ -1267,7 +1272,7 @@ export function SettingsPage({
                 <div className="settings-card-title-group">
                   <h3 className="settings-card-title">Участники и инициатива</h3>
                   <p className="settings-card-subtitle">
-                    Кто участвует в беседе и как часто Iris проявляет инициативу.
+                    Самостоятельные реплики не мешают обычным ответам на ваши обращения.
                   </p>
                 </div>
               </div>
@@ -1276,7 +1281,7 @@ export function SettingsPage({
             <div className="settings-card-grid">
 
               <label>
-                Активность в беседе
+                Уместность самостоятельных реплик
                 <CustomSelect
                   value={liveSettings.live_conversation_engagement}
                   onChange={(event) => updateLiveSetting(
@@ -1284,14 +1289,14 @@ export function SettingsPage({
                     event.target.value as LiveConversationSettings["live_conversation_engagement"],
                   )}
                 >
-                  <option value="low">Сдержанная</option>
-                  <option value="balanced">Сбалансированная</option>
-                  <option value="high">Разговорчивая</option>
+                  <option value="low">Только очевидная польза</option>
+                  <option value="balanced">По ситуации</option>
+                  <option value="high">Свободнее поддерживать беседу</option>
                 </CustomSelect>
               </label>
 
               <label>
-                Инициативность
+                Как часто вступать самой
                 <CustomSelect
                   value={liveSettings.live_conversation_initiative}
                   onChange={(event) => updateLiveSetting(
@@ -1299,9 +1304,9 @@ export function SettingsPage({
                     event.target.value as LiveConversationSettings["live_conversation_initiative"],
                   )}
                 >
-                  <option value="off">Выключена</option>
-                  <option value="rare">Редкая</option>
-                  <option value="balanced">Сбалансированная</option>
+                  <option value="off">Не вмешиваться</option>
+                  <option value="rare">Изредка</option>
+                  <option value="balanced">Участвовать чаще</option>
                 </CustomSelect>
               </label>
             </div>
@@ -1337,7 +1342,7 @@ export function SettingsPage({
               </label>
 
               <label>
-                Прямое обращение
+                Когда адресат не назван
                 <CustomSelect
                   value={liveSettings.live_conversation_address_strictness}
                   disabled={saving}
@@ -1346,9 +1351,9 @@ export function SettingsPage({
                     event.target.value as LiveConversationSettings["live_conversation_address_strictness"],
                   )}
                 >
-                  <option value="relaxed">Свободное</option>
-                  <option value="balanced">Сбалансированное</option>
-                  <option value="strict">Строгое</option>
+                  <option value="relaxed">Легче подхватывать разговор</option>
+                  <option value="balanced">По контексту</option>
+                  <option value="strict">При большей уверенности</option>
                 </CustomSelect>
               </label>
 

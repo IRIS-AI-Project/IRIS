@@ -563,6 +563,8 @@ class MemoryService:
         """Exclude overheard and incomplete live speech from factual memory."""
         if message is None:
             return False
+        if message.metadata.get("automatic_memory_excluded"):
+            return False
         if message.role == "assistant" and message.metadata.get("document_context"):
             # File answers must stay excluded when a later ordinary turn
             # consolidates the entire unprocessed conversation window.
@@ -2064,7 +2066,8 @@ class MemoryService:
         message: StoredTimelineMessage | None,
     ) -> list[dict[str, object]]:
         """Resolve the previously asked question from a direct user reply."""
-        if message is None or message.role != "user" or message.status != "completed":
+        if (message is None or message.role != "user" or message.status != "completed"
+                or message.metadata.get("automatic_memory_excluded")):
             return []
         clarification = self._store.open_memory_clarification_for_response(message.id)
         if clarification is None:

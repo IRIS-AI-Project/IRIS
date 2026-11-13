@@ -1,0 +1,18 @@
+[
+  {"id":"people_request","history":[["human","Лёша, возьми блокнот"]],"text":"Запиши адрес, пожалуйста","expected":["ambient"]},
+  {"id":"useful_recall","history":[["human","У служебного входа домофон 4937"],["human","Хорошо, я запомнил"],["human","Мы уже подошли, набирай"],["human","Блин, забыл"]],"text":"Да как же ты так, только что же говорили","expected":["helpful"]},
+  {"id":"missing_fact","history":[["human","Мы уже подошли к подъезду"],["human","Я не помню, что набирать"]],"text":"Да как же ты так, только что же говорили","expected":["ambient"]},
+  {"id":"explicit_recall","history":[["human","Встречаемся в среду у музея"]],"text":"Ирис, на какой день договорились?","expected":["addressed"]},
+  {"id":"choice_answer","history":[["human","Ирис, помоги выбрать цвет"],["iris","Тебе ближе синий или зелёный?"]],"text":"Синий, пожалуй","expected":["addressed"]},
+  {"id":"unnamed_continuation","history":[["human","Ирис, как у тебя дела?"],["iris","Нормально. А ты как?"]],"text":"Да нормально, закончил наконец работу","expected":["addressed"]},
+  {"id":"switch_to_person","history":[["human","Ирис, как у тебя дела?"],["iris","Всё хорошо, а у тебя?"]],"text":"Дим, подвинься, я тут сяду","expected":["ambient"]},
+  {"id":"mention_not_address","history":[["human","Что думаешь про голосовых помощников?"]],"text":"Ирис сказала, что это можно сделать завтра","expected":["ambient"]},
+  {"id":"quoted_address","history":[],"text":"Он вчера кричал: «Ирис, ответь мне!»","expected":["ambient"]},
+  {"id":"clarify_target","history":[["human","Ирис, скажи, какой вариант лучше"],["iris","Я бы выбрала второй"],["human","Саш, а тебе какой нравится?"],["human","Мне первый"]],"text":"А почему ты так думаешь?","expected":["clarify","ambient"]},
+  {"id":"confirm_pending","history":[["human","Объясни, почему так"],["iris","Это мне?"]],"pending":"Объясни, почему так","text":"Да, я тебя спрашиваю","expected":["addressed"],"resolves_pending":true},
+  {"id":"deny_pending","history":[["human","Объясни, почему так"],["iris","Это мне?"]],"pending":"Объясни, почему так","text":"Нет, это я Ване","expected":["ambient"]},
+  {"id":"other_insult","history":[["human","Саш, ты сломал мою постройку?"],["human","Да, случайно"]],"text":"Да ты совсем охуел, я два часа строил","expected":["ambient"]},
+  {"id":"ordinary_pause","history":[["human","Мы завтра идём в кино"],["human","Ага, на вечерний сеанс"]],"text":"Ну вот, отлично","expected":["ambient"]},
+  {"id":"off_blocks_help","initiative":"off","history":[["human","Ключи в левом ящике"],["human","Не помню, куда положил ключи"]],"text":"Опять искать по всей квартире","expected":["ambient"]},
+  {"id":"conflicting_evidence","history":[["human","Вроде в четверг в пять"],["human","Нет, кажется в пятницу в шесть"],["human","Не знаю, оба могли перепутать"]],"text":"Так когда мы в итоге встречаемся?","expected":["ambient","clarify"]}
+]

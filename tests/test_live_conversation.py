@@ -787,7 +787,7 @@ def test_group_speaker_estimator_is_conservative() -> None:
         echo=False,
     )
     assert unknown.role is SpeakerRole.UNKNOWN
-    assert addressed.role is SpeakerRole.PRIMARY
+    assert addressed.role is SpeakerRole.UNKNOWN  # Addressing cannot identify the owner.
     assert "direct_address" in addressed.reasons
 
 

@@ -91,7 +91,7 @@ async def test_new_speech_cancels_parallel_appraisal_without_stale_state(tmp_pat
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("overrides,transcript,uncertain", [
-    ({"live_conversation_participant_mode": "group"}, "Ирис, что думаешь?", False),
+    ({"live_conversation_participant_mode": "group"}, "А что ты об этом думаешь?", False),
     ({}, "Ирис, говори без мата", False),
     ({}, "Ирис, не используй ненормативную лексику", False),
     ({}, "Ирис, что думаешь?", True),

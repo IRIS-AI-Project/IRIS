@@ -377,6 +377,8 @@ class VoiceSessionManager:
         playback_rate: float = 1.0,
         pipeline_started_at: float | None = None,
         owner_is_current: Callable[[], bool] | None = None,
+        response_mode: str = "normal",
+        room_context: str | None = None,
     ) -> asyncio.Task[None]:
         if owner_is_current is not None and not owner_is_current():
             raise asyncio.CancelledError
@@ -413,7 +415,7 @@ class VoiceSessionManager:
             self._run(
                 context, transcript, language, voice, agent, input_mode, source_message, state_context, presentation_cue,
                 persist_reply, on_assistant_completed, on_assistant_interrupted,
-                raw_transcript, transcript_corrections,
+                raw_transcript, transcript_corrections, response_mode, room_context,
             ),
             name=f"voice-{utterance_id}",
         )
@@ -678,6 +680,8 @@ class VoiceSessionManager:
         on_assistant_interrupted: AssistantTerminalHandler | None,
         raw_transcript: str | None,
         transcript_corrections: tuple[dict[str, object], ...],
+        response_mode: str = "normal",
+        room_context: str | None = None,
     ) -> None:
         started = time.perf_counter()
         queue: asyncio.Queue[SpeechSegment | None] = asyncio.Queue(self._queue_size)
@@ -856,19 +860,29 @@ class VoiceSessionManager:
                     ),
                     name=f"avatar-stream-start-{context.utterance_id}",
                 )
-            iterator = agent.stream_user_message(
-                context.session_id,
-                transcript,
-                stored_reply_transform=clean_live_reply,
-                input_mode=input_mode,
-                source_message=source_message,
-                state_context=state_context,
-                state_behavior=presentation_cue,
-                schedule_memory=source_message is None,
-                persist_reply=persist_reply,
-                raw_user_text=raw_transcript,
-                voice_corrections=transcript_corrections,
-            ).__aiter__()
+            async def clarification():
+                yield "Это мне?" if language.startswith("ru") else "Was that for me?"
+
+            if response_mode == "clarify":
+                stream = clarification()
+            elif response_mode == "contribution":
+                stream = agent.stream_contribution(transcript, state_context or "")
+            else:
+                stream = agent.stream_user_message(
+                    context.session_id,
+                    transcript,
+                    stored_reply_transform=clean_live_reply,
+                    input_mode=input_mode,
+                    source_message=source_message,
+                    state_context=state_context,
+                    room_context=room_context,
+                    state_behavior=presentation_cue,
+                    schedule_memory=source_message is None,
+                    persist_reply=persist_reply,
+                    raw_user_text=raw_transcript,
+                    voice_corrections=transcript_corrections,
+                )
+            iterator = stream.__aiter__()
             pending = asyncio.create_task(anext(iterator))
             while True:
                 if not self._is_active(context):

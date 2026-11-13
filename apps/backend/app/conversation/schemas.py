@@ -31,6 +31,8 @@ class DecisionReason(StrEnum):
     SPEECH_BUDGET = "speech_budget"
     ECHO = "echo"
     LOW_CONFIDENCE = "low_confidence"
+    CLARIFY_ADDRESS = "clarify_address"
+    HELPFUL_CONTRIBUTION = "helpful_contribution"
 
 
 class ConversationPhase(StrEnum):
@@ -128,6 +130,17 @@ class EventAppraisal(BaseModel):
     addressedness: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
+class GroupParticipation(BaseModel):
+    """Semantic evidence; the local policy still owns permission to speak."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["addressed", "clarify", "helpful", "ambient"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=4)
+    resolves_pending: bool = False
+
+
 class ConversationAdjudicationV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -135,6 +148,7 @@ class ConversationAdjudicationV1(BaseModel):
     decision: ConversationDecision
     appraisal: EventAppraisal
     dialogue_style: DialogueStyleCue | None = None
+    participation: GroupParticipation | None = None
 
 
 class ConversationObservation(BaseModel):

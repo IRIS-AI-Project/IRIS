@@ -17,6 +17,9 @@ from apps.backend.app.skills.text_editor import TextEditor, VoiceEditIntent
 from uuid import uuid4
 
 from apps.backend.app.conversation.adjudicator import StructuredConversationAdjudicator
+from apps.backend.app.conversation.participation import (
+    ConversationFloor, PendingAddress, group_response_context, resolve_group_participation,
+)
 from apps.backend.app.agents.character.dialogue_style import DialogueStyleService
 from apps.backend.app.conversation.behavior import StateToBehaviorRenderer
 from apps.backend.app.conversation.decision import ConversationDecisionEngine, DecisionContext
@@ -58,6 +61,8 @@ class DeferredReaction:
     source_message_id: str | None
     state_context: str
     attempts: int = 0
+    response_mode: str = "normal"
+    evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -100,9 +105,13 @@ class ConversationSession:
     initiative_timestamps: deque[float] = field(default_factory=lambda: deque(maxlen=20))
     backchannel_timestamps: deque[float] = field(default_factory=lambda: deque(maxlen=20))
     initiative_utterance_ids: set[str] = field(default_factory=set)
+    passive_utterance_ids: set[str] = field(default_factory=set)
+    group_utterance_ids: set[str] = field(default_factory=set)
     last_human_activity_at: float = 0.0
     last_iris_activity_at: float = 0.0
     other_conversation_until: float = 0.0
+    floor: ConversationFloor = field(default_factory=ConversationFloor)
+    participant_mode: str | None = None
     last_decision: ConversationDecision | None = None
     last_decision_source: str = "deterministic"
     last_speaker_estimate: SpeakerRoleEstimate | None = None
@@ -126,7 +135,10 @@ class ObservationResult:
     turn_id: str
     utterance_id: str
     state_context: str
+    response_mode: str = "normal"
+    response_target: str | None = None
     text_edit: VoiceEditIntent | None = None
+    room_context: str | None = None
 
 
 class LiveConversationService:
@@ -366,10 +378,14 @@ class LiveConversationService:
             "one_to_one",
         )
         one_to_one = participant_mode == "one_to_one"
+        if session.participant_mode != participant_mode:
+            session.floor = ConversationFloor()
+            session.other_conversation_until = 0.0
+            session.participant_mode = participant_mode
         continuation_window = {
-            "strict": 0.0,
-            "balanced": 25.0,
-            "relaxed": 45.0,
+            "strict": 30.0,
+            "balanced": 90.0,
+            "relaxed": 120.0,
         }.get(strictness, 25.0)
         recent_iris_turn = bool(
             session.last_iris_activity_at > 0
@@ -379,7 +395,10 @@ class LiveConversationService:
         # for Iris unless the user explicitly marks it as self-talk.  Name and
         # nearby-person detection is meaningful only in group mode.
         addressed_to_other_now = not one_to_one and addressing.other_person
-        explicitly_addressed_to_iris = addressing.direct_iris
+        explicitly_addressed_to_iris = (
+            addressing.direct_iris if one_to_one
+            else self._decision.is_explicit_iris_address(addressing_text)
+        )
         if addressed_to_other_now:
             session.other_conversation_until = time.monotonic() + 45
         elif explicitly_addressed_to_iris:
@@ -409,7 +428,6 @@ class LiveConversationService:
         # addressee, self-talk, or playback-echo evidence.
         group_contextual_implicit_address = bool(
             not one_to_one
-            and explicit_implicit_address
             and recent_dialogue_continuation
             and self._has_explicit_dialogue_reply_evidence(addressing_text)
             and not addressing.other_person
@@ -426,6 +444,9 @@ class LiveConversationService:
         )
         if implicit_address:
             addressedness = max(addressedness, 0.82)
+        elif not one_to_one:
+            # A question/imperative or a third-person mention isn't a vocative.
+            addressedness = 1.0 if explicitly_addressed_to_iris else min(addressedness, 0.42)
         if echo or participant_mode == "group":
             recent_primary = any(
                 item.get("speaker_role") == SpeakerRole.PRIMARY.value
@@ -448,13 +469,17 @@ class LiveConversationService:
             )
         session.last_speaker_estimate = estimate
         # Branch before writing the observation or exposing the chat transcript.
+        editor_continuation = (
+            not one_to_one and session.floor.addressed_until > time.monotonic()
+            and not addressed_to_other
+        )
         editor_addressed = explicitly_addressed_to_iris or implicit_address
         if (
             text_editor is not None and not echo and not stt_uncertain
             and end_of_turn_confidence >= .5 and speaker_role is not SpeakerRole.OTHER
             and not addressed_to_other and not addressing.other_person
             and not self._decision.is_self_talk(addressing_text)
-            and editor_addressed
+            and (editor_addressed or editor_continuation)
         ):
             intent = await text_editor.voice_intent(addressing_text, followup_only=not editor_addressed)
             if intent is not None:
@@ -462,6 +487,9 @@ class LiveConversationService:
                     if generation == session.generation:
                         session.phase = ConversationPhase.LISTENING
                         session.last_human_activity_at = time.monotonic()
+                        if not one_to_one:
+                            session.floor.addressed_until = time.monotonic() + continuation_window
+                            session.floor.pending = None
                 decision = self._decision._decision(
                     ConversationAction.OBSERVE, DecisionReason.DIRECT_ADDRESS, 1.0, addressedness, 0.0, 0.0,
                 )
@@ -473,6 +501,8 @@ class LiveConversationService:
                 return ObservationResult(None, decision, generation, turn_id, utterance_id, "")
         significance = self._significance(transcript)
         metadata: dict[str, object] = {
+            "participant_mode": participant_mode,
+            "automatic_memory_excluded": not one_to_one,
             "speaker_role": speaker_role.value,
             "speaker_confidence": speaker_confidence,
             "speaker_reasons": estimate.reasons,
@@ -556,6 +586,10 @@ class LiveConversationService:
             affect=session.affect,
             assistant_echo=echo,
         )
+        if not one_to_one and not echo and end_of_turn_confidence >= .5 and self._decision.is_self_talk(addressing_text):
+            fallback_decision = fallback_decision.model_copy(update={
+                "action": ConversationAction.OBSERVE, "reason": DecisionReason.SELF_TALK,
+            })
         hard_reasons = {
             DecisionReason.INCOMPLETE_TURN,
             DecisionReason.DIRECT_ADDRESS,
@@ -571,6 +605,9 @@ class LiveConversationService:
         decision_source = "deterministic"
         dialogue_style_cue = None
         background_appraisal = None
+        participation = None
+        group_outcome = None
+        floor_snapshot = deepcopy(session.floor)
         semantic_skip_reasons = {
             DecisionReason.INCOMPLETE_TURN,
             DecisionReason.OTHER_PERSON,
@@ -578,7 +615,15 @@ class LiveConversationService:
             DecisionReason.AMBIENT_SPEECH,
             DecisionReason.ECHO,
         }
-        if fallback_decision.reason not in semantic_skip_reasons:
+        if one_to_one:
+            should_adjudicate = fallback_decision.reason not in semantic_skip_reasons
+        else:
+            should_adjudicate = (
+                not echo and context.turn_complete
+                and fallback_decision.reason is not DecisionReason.SELF_TALK
+                and (not explicitly_addressed_to_iris or stt_uncertain)
+            )
+        if should_adjudicate:
             episode_id = getattr(message, "episode_id", None)
             current_dialogue_style = (
                 self._dialogue_style_service.resolve(episode_id)
@@ -593,9 +638,20 @@ class LiveConversationService:
                     fallback_appraisal=fallback_appraisal,
                     cause_message_id=cause_message_id,
                     speaker_role=speaker_role.value,
-                    previous_assistant_text=session.last_generated_assistant_reply,
-                    relationship_context=self._state_context(session, fallback_decision),
+                    previous_assistant_text=session.last_generated_assistant_reply if one_to_one else None,
+                    relationship_context=self._state_context(session, fallback_decision) if one_to_one else None,
                     current_dialogue_style=current_dialogue_style,
+                    group_context={
+                        **floor_snapshot.context(time.monotonic()),
+                        "initiative": getattr(self._runtime, "live_conversation_initiative", "rare"),
+                        "engagement": self._runtime.live_conversation_engagement,
+                        "strictness": strictness,
+                        "recent_iris_turn": recent_iris_turn,
+                        "possible_iris_continuation": group_contextual_implicit_address and not addressed_to_other,
+                        "other_person_now": addressed_to_other_now,
+                        "other_conversation_hint": addressed_to_other,
+                        "stt_uncertain": stt_uncertain,
+                    } if not one_to_one else None,
                 ),
                 name=f"decision-{turn_id}",
                 generation=generation,
@@ -629,23 +685,36 @@ class LiveConversationService:
                 adjudicated = await adjudication_task
                 model_decision, appraisal, decision_source = adjudicated
                 dialogue_style_cue = adjudicated.dialogue_style
-            # Addressing, echo, completeness and conversational permission are
-            # technical facts.  The model owns meaning, not these gates.
+                participation = adjudicated.participation
+            # Private dialogue keeps its established local gates. Group
+            # addressing is resolved separately from semantic evidence below.
             decision = fallback_decision if fallback_decision.reason in hard_reasons else model_decision
-            if dialogue_style_cue is not None and self._dialogue_style_service is not None:
+            if one_to_one and dialogue_style_cue is not None and self._dialogue_style_service is not None:
                 await asyncio.to_thread(
                     self._dialogue_style_service.apply,
                     episode_id,
                     dialogue_style_cue.mode,
                     source_message_id=getattr(message, "id", None),
                 )
+        if not one_to_one:
+            group_outcome = resolve_group_participation(
+                fallback_decision, participation, floor=floor_snapshot,
+                transcript=addressing_text, now=time.monotonic(), direct=explicitly_addressed_to_iris,
+                continuation=group_contextual_implicit_address and not addressed_to_other,
+                strictness=strictness, initiative=getattr(self._runtime, "live_conversation_initiative", "rare"),
+                engagement=self._runtime.live_conversation_engagement,
+                cooldown=self._initiative_cooldown_active(session),
+                budget_exceeded=self._speech_budget_exceeded(session), uncertain=stt_uncertain,
+            )
+            decision = group_outcome.decision
+            addressedness = decision.addressedness
         has_addressing_evidence = bool(
             explicitly_addressed_to_iris
             or implicit_address
             or addressedness >= 0.55
         )
         if (
-            not has_addressing_evidence
+            one_to_one and not has_addressing_evidence
             and significance < 0.65
             and decision.action in {
                 ConversationAction.BACKCHANNEL,
@@ -702,9 +771,11 @@ class LiveConversationService:
             DecisionReason.SELF_TALK,
             DecisionReason.OTHER_PERSON,
             DecisionReason.INCOMPLETE_TURN,
+            DecisionReason.CLARIFY_ADDRESS,
+            DecisionReason.HELPFUL_CONTRIBUTION,
         }
         state_applied = bool(
-            not stale and background_appraisal is None
+            not stale and background_appraisal is None and one_to_one
             and not echo
             and decision.reason not in ambient_reasons
             and speaker_role in {SpeakerRole.PRIMARY, SpeakerRole.OTHER}
@@ -732,6 +803,8 @@ class LiveConversationService:
             session.last_decision_source = decision_source
             if decision.action in {ConversationAction.BACKCHANNEL, ConversationAction.RESPOND}:
                 session.live_utterance_ids.add(utterance_id)
+                if not one_to_one:
+                    session.group_utterance_ids.add(utterance_id)
                 session.utterance_generations[utterance_id] = generation
                 if decision.action is ConversationAction.BACKCHANNEL:
                     session.backchannel_timestamps.append(time.monotonic())
@@ -741,6 +814,25 @@ class LiveConversationService:
                 else ConversationPhase.LISTENING
             )
             state_context = self._state_context(session, decision)
+            room_context = None
+            if group_outcome is not None and generation == session.generation and not echo:
+                now = time.monotonic()
+                if decision.action in {ConversationAction.RESPOND, ConversationAction.DEFER}:
+                    room_context = group_response_context(session.floor, now, group_outcome)
+                if decision.reason is DecisionReason.CLARIFY_ADDRESS:
+                    session.passive_utterance_ids.add(utterance_id)
+                    session.floor.pending = PendingAddress(addressing_text, cause_message_id, utterance_id, now + 30)
+                    session.floor.last_clarification_at = now
+                elif decision.action is not ConversationAction.WAIT_MORE:
+                    session.floor.pending = None
+                if decision.action is ConversationAction.RESPOND and group_outcome.response_mode == "normal":
+                    session.floor.addressed_until = now + continuation_window
+                    session.other_conversation_until = 0.0
+                elif decision.reason in {DecisionReason.OTHER_PERSON, DecisionReason.AMBIENT_SPEECH}:
+                    session.floor.addressed_until = 0.0
+                if decision.action is not ConversationAction.WAIT_MORE:
+                    session.floor.remember(addressing_text, cause_message_id, now=now,
+                                           kind=decision.reason.value, uncertain=stt_uncertain)
             deferred: DeferredReaction | None = None
             if decision.action is ConversationAction.DEFER and generation == session.generation:
                 deferred = DeferredReaction(
@@ -755,7 +847,9 @@ class LiveConversationService:
                     transcript=corrected_content or transcript,
                     language=language,
                     source_message_id=message.id if message is not None else None,
-                    state_context=state_context,
+                    state_context=f"{state_context}\n{room_context}" if room_context else state_context,
+                    response_mode=group_outcome.response_mode if group_outcome else "normal",
+                    evidence_ids=tuple(sorted(item["id"] for item in group_outcome.evidence)) if group_outcome else (),
                 )
                 session.deferred_reactions.append(deferred)
             observation_view = {
@@ -785,6 +879,8 @@ class LiveConversationService:
                 message.id,
                 decision.action.value,
                 decision.reason.value,
+                addressedness=decision.addressedness if not one_to_one else None,
+                participation=participation.model_dump() if participation is not None else None,
             )
             if state_applied and self._state_service is None:
                 state_payload = self._state_persistence_payload(
@@ -908,6 +1004,9 @@ class LiveConversationService:
             turn_id=turn_id,
             utterance_id=utterance_id,
             state_context=state_context,
+            response_mode=group_outcome.response_mode if group_outcome else "normal",
+            response_target=group_outcome.response_target if group_outcome else None,
+            room_context=room_context,
         )
 
     async def playback_segment_started(
@@ -1011,6 +1110,12 @@ class LiveConversationService:
             )
             if accepted:
                 session.acknowledged_prefixes.setdefault(utterance_id, []).append(str(text))
+                if session.floor.pending and session.floor.pending.utterance_id == utterance_id:
+                    session.floor.pending.heard = True
+                    session.floor.pending.expires_at = time.monotonic() + 30
+                if session.participant_mode == "group":
+                    session.floor.remember(str(text), f"iris-{utterance_id}-{len(session.acknowledged_prefixes[utterance_id])}",
+                                           now=time.monotonic(), kind="spoken", role="iris")
 
     async def playback_finished(self, session_id: str, utterance_id: str | None) -> None:
         session = await self.ensure_session(session_id)
@@ -1039,6 +1144,12 @@ class LiveConversationService:
                 prefix = session.generated_assistant_replies.get(resolved_id, "").strip()
             if not prefix:
                 return
+            if session.floor.pending and session.floor.pending.utterance_id == resolved_id:
+                session.floor.pending.heard = True
+                session.floor.pending.expires_at = time.monotonic() + 30
+            if session.participant_mode == "group" and not session.acknowledged_prefixes.get(resolved_id):
+                session.floor.remember(prefix, f"iris-{resolved_id}", now=time.monotonic(), kind="spoken", role="iris")
+            session.last_iris_activity_at = time.monotonic()
             session.committed_assistant_utterances.add(resolved_id)
             generation = session.utterance_generations.get(resolved_id, session.generation)
             metadata = session.generated_assistant_metadata.pop(resolved_id, {})
@@ -1301,6 +1412,9 @@ class LiveConversationService:
                 >= reaction.minimum_silence_ms / 1000
                 and not self._speech_budget_exceeded(session)
                 and not self._initiative_cooldown_active(session)
+                and getattr(self._runtime, "live_conversation_initiative", "rare") != "off"
+                and (reaction.response_mode != "contribution" or
+                     getattr(self._runtime, "live_conversation_participant_mode", "one_to_one") == "group")
             )
             if not valid:
                 with contextlib.suppress(ValueError):
@@ -1312,8 +1426,13 @@ class LiveConversationService:
             utterance_id = uuid4().hex
             session.live_utterance_ids.add(utterance_id)
             session.initiative_utterance_ids.add(utterance_id)
+            if reaction.response_mode == "contribution":
+                session.passive_utterance_ids.add(utterance_id)
+                session.group_utterance_ids.add(utterance_id)
             session.utterance_generations[utterance_id] = session.generation
             session.initiative_timestamps.append(now)
+            if reaction.evidence_ids:
+                session.floor.used_evidence.append(reaction.evidence_ids)
             session.phase = ConversationPhase.GENERATING
             sender = session.event_sender
             generation = session.generation
@@ -1378,20 +1497,20 @@ class LiveConversationService:
         words = [word for word in cls._normalize(text).split() if len(word) > 3]
         return "-".join(words[:4]) or "conversation"
 
-    @staticmethod
-    def _initiative_cooldown_active(session: ConversationSession) -> bool:
+    def _initiative_cooldown_active(self, session: ConversationSession) -> bool:
         now = time.monotonic()
+        cooldown = 90 if getattr(self._runtime, "live_conversation_initiative", "rare") == "rare" else 45
         return bool(
             session.initiative_timestamps
-            and now - session.initiative_timestamps[-1] < 90
+            and now - session.initiative_timestamps[-1] < cooldown
         ) or (
             session.last_iris_activity_at > 0
             and now - session.last_iris_activity_at < 20
         )
 
-    @classmethod
-    def _speech_budget_exceeded(cls, session: ConversationSession) -> bool:
-        return cls._initiative_count(session) >= 2 or cls._iris_speech_share(session) > 0.35
+    def _speech_budget_exceeded(self, session: ConversationSession) -> bool:
+        limit = 4 if getattr(self._runtime, "live_conversation_initiative", "rare") == "balanced" else 2
+        return self._initiative_count(session) >= limit or self._iris_speech_share(session) > 0.35
 
     @staticmethod
     def _iris_speech_share(session: ConversationSession) -> float:
@@ -1503,7 +1622,8 @@ class LiveConversationService:
             generation=generation,
             turn_id=source.turn_id if source is not None else None,
             reply_to_message_id=source.id if source is not None else None,
-            metadata={"playback_acknowledged": True, **(metadata or {})},
+            metadata={"playback_acknowledged": True, **(metadata or {}),
+                      "automatic_memory_excluded": utterance_id in session.group_utterance_ids or utterance_id in session.passive_utterance_ids},
         )
         tokens = (metadata or {}).get("tokens")
         if created and self._record_activity is not None and status == "completed":
@@ -1520,7 +1640,8 @@ class LiveConversationService:
                     },
                 },
             )
-        if status == "completed" and self._memory_service is not None:
+        if (status == "completed" and self._memory_service is not None
+                and utterance_id not in session.passive_utterance_ids and utterance_id not in session.group_utterance_ids):
             self._memory_service.schedule_extraction(assistant)
 
     @staticmethod
@@ -1676,7 +1797,7 @@ class LiveConversationService:
     def _state_context(session: ConversationSession, decision: ConversationDecision) -> str:
         affect = session.affect
         participant = session.participants.get("primary", ParticipantState())
-        prior_reply = session.last_generated_assistant_reply.strip()
+        prior_reply = session.last_generated_assistant_reply.strip() if session.participant_mode != "group" else ""
         prior_reply_context = (
             f' Последняя фактически сгенерированная реплика Iris: "{prior_reply[:1000]}". '
             "Используй её только для связного продолжения и исправления собственной ошибки."

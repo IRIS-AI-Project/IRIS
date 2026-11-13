@@ -36,9 +36,9 @@ class SpeakerRoleEstimator:
             )
         if addressedness >= 0.86:
             return SpeakerRoleEstimate(
-                role=SpeakerRole.PRIMARY,
-                confidence=0.78,
-                reasons=["direct_address"],
+                role=SpeakerRole.UNKNOWN,
+                confidence=0.62,
+                reasons=["direct_address", "insufficient_evidence"],
             )
         if self._third_person.search(transcript):
             return SpeakerRoleEstimate(

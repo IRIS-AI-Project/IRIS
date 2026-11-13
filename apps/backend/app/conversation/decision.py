@@ -56,10 +56,12 @@ class ConversationDecisionEngine:
     _invitation = re.compile(
         r"(?iu)\b(?:что думаешь|как считаешь|тво[её] мнение|скажи|ответь|прокомментируй|а ты)\b"
     )
-    _implicit_request = re.compile(
-        r"(?iu)(?:"
+    _request_verb = (
         r"\b(?:можешь|могла\s+бы|подскажи|расскажи|объясни|покажи|скинь|пришли|"
-        r"дай|помоги|посоветуй|найди|открой|включи|выключи)\b|"
+        r"дай|помоги|посоветуй|найди|открой|включи|выключи|напомни)\b"
+    )
+    _implicit_request = re.compile(
+        rf"(?iu)(?:{_request_verb}|"
         r"^\s*(?:(?:а|ну|кстати|слушай|смотри|короче)\s+){0,3}"
         r"(?:что|кто|где|куда|откуда|когда|почему|зачем|как|"
         r"какой|какая|какое|какие|какую|какою|какого|какому|каким|каком|"
@@ -76,6 +78,15 @@ class ConversationDecisionEngine:
     )
     _self_talk = re.compile(r"(?iu)\b(?:думаю вслух|сам с собой|не обращай внимания)\b")
     _question = re.compile(r"[?？]\s*$")
+    _iris_vocative = re.compile(
+        r"(?iu)^(?:(?:эй|слушай|ну|а|привет)\b[,\s]+){0,2}"
+        r"(?:iris|айрис|ирис|ириска|ириск|ирес|иреск)\b"
+    )
+    _iris_vocative_reply = re.compile(
+        rf"(?iu)^(?:(?:а|ну|так)\s+){{0,2}}"
+        rf"(?:{_request_verb}|(?:ты|вы|скажи|ответь|прокомментируй|привет|спасибо|"
+        r"(?:can|could|will|would)\s+you)\b)"
+    )
     _known_other_name = re.compile(
         r"(?iu)^\s*(?:(?:а|ну|так|эй|слушай)\s+){0,2}(?:"
         r"олег|рома|роман|лука|федя|фёдор|федор|саша|александр|алексей|лёша|леша|"
@@ -103,6 +114,7 @@ class ConversationDecisionEngine:
         "iris", "айрис", "ирис", "ириска", "ириск", "ирес", "иреск",
         "а", "ну", "так", "да", "нет", "блин", "слушай", "смотри", "кстати",
         "короче", "что", "кто", "где", "куда", "откуда", "когда", "почему",
+        "ты", "вы",
         "зачем", "как", "какой", "какая", "какое", "какие", "какую", "какою",
         "какого", "какому", "каким", "каком", "каких", "какими", "который",
         "которая", "которое", "которые", "которую", "которого", "которому",
@@ -259,6 +271,21 @@ class ConversationDecisionEngine:
         if self._question.search(transcript):
             return 0.42
         return 0.08
+
+    def is_explicit_iris_address(self, transcript: str) -> bool:
+        """Identify a clear vocative, including when STT omits punctuation."""
+        text = transcript.strip()
+        if re.search(r'[«»"“”]', text):
+            return False
+        name = self._iris_vocative.match(text)
+        if name is None:
+            return False
+        tail = text[name.end():].lstrip()
+        return (
+            not tail.strip(".…")
+            or tail.startswith((",", "!", "?", "？"))
+            or bool(self._iris_vocative_reply.match(tail))
+        )
 
     def is_implicit_address(self, transcript: str) -> bool:
         """Detect a normal one-to-one request even when STT omits punctuation."""

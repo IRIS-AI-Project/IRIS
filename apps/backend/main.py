@@ -591,6 +591,7 @@ def create_app() -> FastAPI:
                 source_message=source_message,
                 owner_is_current=lambda: session.generation == generation,
                 state_context=reaction.state_context,
+                response_mode=reaction.response_mode,
                 on_assistant_completed=persist_live_usage(
                     agent, session_id, utterance_id, generation,
                 ),
@@ -818,7 +819,7 @@ def create_app() -> FastAPI:
             await voice_session_manager.start(
                 session_id=session_id,
                 utterance_id=utterance_id,
-                transcript=stt_result.text,
+                transcript=result.response_target or stt_result.text,
                 language=stt_result.language,
                 voice=voice,
                 agent=agent,
@@ -826,9 +827,11 @@ def create_app() -> FastAPI:
                 source_message=result.message,
                 owner_is_current=lambda: session.generation == result.generation,
                 state_context=result.state_context,
+                room_context=result.room_context,
+                response_mode=result.response_mode,
                 pipeline_started_at=connection.pipeline_started_at or None,
-                raw_transcript=stt_result.raw_text,
-                transcript_corrections=stt_result.corrections,
+                raw_transcript=(stt_result.raw_text or stt_result.text) if result.response_target else stt_result.raw_text,
+                transcript_corrections=() if result.response_target else stt_result.corrections,
                 on_assistant_completed=persist_live_usage(
                     agent, session_id, utterance_id, result.generation,
                 ),

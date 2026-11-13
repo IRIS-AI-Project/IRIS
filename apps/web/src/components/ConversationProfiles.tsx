@@ -4,9 +4,9 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import type { PublicSettings } from "../types";
 
 const profiles = [
-  { label: "Спокойнее", engagement: "low", initiative: "off", description: "Реже вступает в беседу и не начинает её сама." },
-  { label: "Обычно", engagement: "balanced", initiative: "rare", description: "Поддерживает разговор, изредка начинает сама." },
-  { label: "Больше общения", engagement: "high", initiative: "balanced", description: "Чаще вступает в разговор и предлагает новые темы." },
+  { label: "По обращению", engagement: "low", initiative: "off", description: "Отвечает вам и продолжает диалог без повторения имени. Сама не вмешивается." },
+  { label: "Помогать к месту", engagement: "balanced", initiative: "rare", description: "Слушает и изредка подсказывает, если в услышанном есть нужная вам информация." },
+  { label: "Участвовать в беседе", engagement: "high", initiative: "balanced", description: "Свободнее подключается с полезной репликой, дождавшись паузы." },
 ] as const;
 
 export function ConversationProfiles({ engagement, initiative, onChange, children }: { engagement: string; initiative: string; children?: ReactNode; onChange: (value: Pick<PublicSettings, "live_conversation_engagement" | "live_conversation_initiative">) => void }) {
@@ -16,7 +16,7 @@ export function ConversationProfiles({ engagement, initiative, onChange, childre
     <div className="settings-card-header">
       <div className="settings-card-title-group">
         <h3 className="settings-card-title" id={`${id}-title`}>Участие в разговоре</h3>
-        <p className="settings-card-subtitle">Выберите, насколько активно Iris участвует в беседе.</p>
+        <p className="settings-card-subtitle">Имя не нужно в каждом ответе. Если адресат неясен, Iris может коротко спросить: «Это мне?».</p>
       </div>
       {!matched && <span className="conversation-custom-profile">Свой вариант</span>}
     </div>
