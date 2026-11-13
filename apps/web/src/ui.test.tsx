@@ -3,6 +3,7 @@ import { notificationStore, notify } from "./notifications";
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -480,19 +481,33 @@ describe("русский интерфейс", () => {
     api.getSettings.mockResolvedValue({ ...settings, avatar_placement: "in_app" });
     const { container } = render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Диалог" }));
-    expect(container.querySelector(".chat-welcome-portrait img")).toHaveAttribute("src", "/brand/iris-welcome-seated.png");
-    expect(container.querySelector(".in-app-avatar-stage")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Начать" }));
-    expect(container.querySelector(".chat-welcome-portrait")).not.toBeInTheDocument();
-    expect(container.querySelector(".chat-panel.has-in-app-avatar .in-app-avatar-stage")).toBeInTheDocument();
-    expect(container.querySelector(".chat-avatar-away")).not.toBeInTheDocument();
+    const chatButton = await screen.findByRole("button", { name: "Диалог" });
+    vi.stubGlobal("__TAURI_INTERNALS__", undefined);
+    mockWindows("main");
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const presentationModes = () => api.requestJson.mock.calls
+      .filter(([path]) => path === "/avatar/presentation")
+      .map(([, options]) => JSON.parse(options.body).mode);
+    try {
+      fireEvent.click(chatButton);
+      expect(container.querySelector(".chat-welcome-portrait img")).toHaveAttribute("src", "/brand/iris-pixel/seated.png");
+      expect(container.querySelector(".in-app-avatar-stage")).not.toBeInTheDocument();
+      expect(presentationModes()).toEqual([]);
+      fireEvent.click(screen.getByRole("button", { name: "Начать" }));
+      expect(presentationModes()).toEqual(["portrait"]);
+      expect(container.querySelector(".chat-welcome-portrait")).not.toBeInTheDocument();
+      expect(container.querySelector(".chat-panel.has-in-app-avatar .in-app-avatar-stage")).toBeInTheDocument();
+      expect(container.querySelector(".chat-avatar-away")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Настройки" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Аватар" }));
-    expect(screen.getByText("Где показывать аватар")).toBeInTheDocument();
-    expect(screen.getByLabelText("Внутри Iris")).toBeChecked();
-    expect(screen.getByLabelText("На рабочем столе")).not.toBeChecked();
+      fireEvent.click(screen.getByRole("button", { name: "Настройки" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Аватар" }));
+      expect(screen.getByText("Где показывать аватар")).toBeInTheDocument();
+      expect(screen.getByLabelText("Внутри Iris")).toBeChecked();
+      expect(screen.getByLabelText("На рабочем столе")).not.toBeChecked();
+    } finally {
+      await act(async () => { cleanup(); });
+      vi.unstubAllGlobals();
+    }
   });
 
   it("заменяет знак на встроенный аватар при смене размещения в активном диалоге", async () => {

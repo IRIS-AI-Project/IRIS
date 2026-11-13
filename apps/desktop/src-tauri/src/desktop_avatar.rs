@@ -256,7 +256,7 @@ pub fn create_host(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window("desktop_avatar").is_none() {
         let bootstrap = format!("window.__NEUROASIST_DESKTOP_CONFIG__ = {}; window.__IRIS_VIEW__ = 'desktop-avatar'; document.addEventListener('DOMContentLoaded', () => document.body.classList.add('desktop-avatar-body'));",
             serde_json::to_string(&app.state::<DesktopState>().runtime()).map_err(|e| e.to_string())?);
-        WebviewWindowBuilder::new(app, "desktop_avatar", WebviewUrl::App("index.html".into()))
+        let host = WebviewWindowBuilder::new(app, "desktop_avatar", WebviewUrl::App("index.html".into()))
             .title("Iris")
             .decorations(false)
             .transparent(true)
@@ -271,6 +271,7 @@ pub fn create_host(app: &AppHandle) -> Result<(), String> {
             .initialization_script(&bootstrap)
             .build()
             .map_err(|e| e.to_string())?;
+        crate::text_editor::remember_avatar_source(&host)?;
     }
     let state = app.state::<DesktopAvatarState>();
     state.inner.lock().unwrap().active = true;
@@ -299,17 +300,30 @@ pub fn create_host(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn visible_geometry(app: &AppHandle) -> Option<Geometry> {
+    let state = app.state::<DesktopAvatarState>();
+    let inner = state.inner.lock().ok()?;
+    if inner.active && inner.config.visible && inner.window.is_some() {
+        inner.geometry.clone()
+    } else {
+        None
+    }
+}
+
 pub fn detach(app: &AppHandle) {
     let state = app.state::<DesktopAvatarState>();
-    let mut inner = state.inner.lock().unwrap();
-    inner.active = false;
-    inner.window = None;
-    inner.gesture = None;
-    inner.regions.clear();
-    inner.click_through = None;
-    inner.hovered = None;
-    inner.last_foreground = None;
+    {
+        let mut inner = state.inner.lock().unwrap();
+        inner.active = false;
+        inner.window = None;
+        inner.gesture = None;
+        inner.regions.clear();
+        inner.click_through = None;
+        inner.hovered = None;
+        inner.last_foreground = None;
+    }
     if let Some(host) = app.get_webview_window("desktop_avatar") {
+        let _ = host.emit("text-editor-close-requested", ());
         let _ = host.hide();
     }
 }
@@ -443,6 +457,7 @@ fn apply(app: &AppHandle) -> Result<(), String> {
         if show {
             let _ = host.show();
         } else {
+            let _ = host.emit("text-editor-close-requested", ());
             let _ = host.hide();
         }
     }
@@ -462,10 +477,10 @@ fn apply(app: &AppHandle) -> Result<(), String> {
                 r.y.round() as i32,
                 r.width.round() as i32,
                 r.height.round() as i32,
-                SWP_NOACTIVATE,
+                SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE,
             )
             .map_err(|e| e.to_string())?;
-            let _ = ShowWindow(
+            let _ = ShowWindowAsync(
                 HWND(window as *mut _),
                 if show { SW_SHOWNA } else { SW_HIDE },
             );
@@ -501,6 +516,7 @@ fn tick(app: &AppHandle) {
         if !active {
             return;
         }
+        crate::text_editor::poll_avatar_source(app);
         // Z-order maintenance must run even when geometry and cursor stay still.
         maintain_z_order(app);
         let mut point = POINT::default();
@@ -633,7 +649,7 @@ pub fn get_desktop_avatar_monitors(app: AppHandle) -> Result<Vec<Monitor>, Strin
 }
 
 #[tauri::command]
-pub fn configure_desktop_avatar(
+pub async fn configure_desktop_avatar(
     app: AppHandle,
     config: Config,
 ) -> Result<Option<Geometry>, String> {

@@ -2579,7 +2579,8 @@ export function ChatPage({
   });
 
   const isDialogActive = isStarted || messages.length > 0 || liveConversation;
-  useAvatarPresentation(!isDialogActive, showInAppAvatar && isActive, avatarHostStatus?.phase);
+  const showConversationAvatar = isDialogActive && showInAppAvatar && isActive;
+  useAvatarPresentation(showConversationAvatar, avatarHostStatus?.phase);
 
   const handleStart = async (event?: React.MouseEvent<HTMLElement>) => {
     if (event) animateButtonPress(event.currentTarget);
@@ -2771,7 +2772,7 @@ export function ChatPage({
   return (
     <section
       ref={chatPanelRef}
-      className={`panel chat-panel is-active${showInAppAvatar && isActive ? " has-in-app-avatar" : ""}`}
+      className={`panel chat-panel is-active${showConversationAvatar ? " has-in-app-avatar" : ""}`}
       style={{ "--dock-scale": dockScale } as React.CSSProperties}
     >
       <IrisPortalBackground
@@ -2780,10 +2781,10 @@ export function ChatPage({
         voiceState={voiceState}
         loading={loading}
         isDialogActive={true}
-        showInAppAvatar={showInAppAvatar && isActive}
+        showInAppAvatar={showConversationAvatar}
         isActive={isActive}
       />
-      {showInAppAvatar && isActive && (
+      {showConversationAvatar && (
         <InAppAvatarHost status={avatarHostStatus} onRetry={onRetryAvatar} suspended={avatarSuspended} />
       )}
       {settings?.avatar_placement === "desktop_overlay" && isActive && (
