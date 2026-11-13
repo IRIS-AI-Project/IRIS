@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 
-from apps.backend.app.reminders import ReminderArguments, ReminderService, explicit_reminder, reminder_skill, resolve_reminder_time, failed_reminder_reply, reminder_request_from_context
+from apps.backend.app.reminders import ReminderArguments, ReminderService, explicit_reminder, reminder_skill, resolve_reminder_time, failed_reminder_reply, reminder_request_from_context, reminder_voice_reply
 from apps.backend.app.storage.timeline import TimelineStore
 
 
@@ -48,6 +48,8 @@ def test_snoozing_invalidates_old_ack_and_completion_prevents_delivery(reminders
     updated = service.update(old["id"], due_at="2026-10-19T18:00:00+03:00")
     assert updated["delivery_token"] != old["delivery_token"]
     assert not service.acknowledge(old["id"], old["delivery_token"])
+    with pytest.raises(ValueError, match="уже изменились"):
+        service.update(old["id"], status="completed", delivery_token=old["delivery_token"])
     service.update(old["id"], status="completed")
     clock[0] += timedelta(days=1)
     assert not service.list(due_only=True)
@@ -109,6 +111,7 @@ def test_due_delivery_retries_without_ack_and_does_not_publish_completed(reminde
     ("Напомни 22 октября в полночь мск", "2026-10-22T00:00:00+03:00"),
     ("Напомни завтра в два ночи мск", "2026-10-21T02:00:00+03:00"),
     ("Напомни через пять минут", "2026-10-20T08:05:00+00:00"),
+    ("Поставь таймер на 10 секунд", "2026-10-20T08:00:10+00:00"),
     ("Remind me in five minutes", "2026-10-20T08:05:00+00:00"),
     ("Напомни через полчаса", "2026-10-20T08:30:00+00:00"),
     ("Напомни через два дня в 19:00 мск", "2026-10-22T19:00:00+03:00"),
@@ -169,3 +172,20 @@ def test_saved_deadline_is_replayed_after_it_has_passed_and_receipt_cannot_inven
     service.update(first["id"], status="cancelled")
     assert not service.acknowledge(first["id"], old_token)
     assert not service.list(due_only=True)
+
+
+def test_announcement_uses_a_dedicated_model_request_and_has_a_fallback():
+    from apps.backend.app.llm.base import LLMResponse, current_llm_call_purpose
+
+    class Provider:
+        async def generate(self, messages):
+            assert current_llm_call_purpose() == "reminder_announcement"
+            assert messages[-1].content == "Сдать работу"
+            return LLMResponse(content="Пора сдавать работу. Удачи!", model="test")
+
+    class Unavailable:
+        async def generate(self, messages):
+            raise TimeoutError
+
+    assert asyncio.run(reminder_voice_reply(Provider(), "Сдать работу", "ru")) == "Пора сдавать работу. Удачи!"
+    assert asyncio.run(reminder_voice_reply(Unavailable(), "Сдать работу", "ru")) == "Напоминаю. Сдать работу"

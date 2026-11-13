@@ -25,14 +25,64 @@ def utc_date(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
+_REMINDER_OBJECT = r"(?:напоминание|будильник|таймер)"
+_REQUEST_FILLER = r"(?:мне|пожалуйста|еще|ещё|раз|просто|это|этот|его|ирис|iris)"
+_ACTION_GAP = rf"(?:[\s,]+{_REQUEST_FILLER})*[\s,]+"
+_REMINDER_PREAMBLE = re.compile(
+    r"[\s,–—-]*(?:(?:ирис|iris|слушай|пожалуйста|ну|эй|так|ага|да|и|а|ещё|еще|тогда|лучше)[\s,:–—-]+)*",
+    re.I,
+)
+_REMINDER_REQUEST = re.compile(
+    rf"\b(?:напомни(?:те)?|remind\s+me|"
+    rf"(?:поставь|создай|заведи|измени|перенеси|сдвинь){_ACTION_GAP}{_REMINDER_OBJECT}|"
+    rf"мож(?:ешь|ете){_ACTION_GAP}(?:напомнить|"
+    rf"(?:поставить|создать|завести|изменить|перенести|сдвинуть){_ACTION_GAP}{_REMINDER_OBJECT}|"
+    rf"{_REMINDER_OBJECT}{_ACTION_GAP}(?:поставить|создать|завести)))\b",
+    re.I,
+)
+
+
+def _reminder_command(text: str) -> re.Match | None:
+    # Quoted instructions and questions about capabilities are not commands.
+    unquoted = re.sub(r'«[^»]*»|“[^”]*”|"[^"]*"', lambda m: " " * len(m[0]), text)
+    if re.search(r"\b(?:не\s+напоминай|не\s+надо\s+напоминать)\b", unquoted, re.I):
+        return None
+    for match in _REMINDER_REQUEST.finditer(unquoted):
+        prefix = re.split(r"[.!?;\n]", unquoted[:match.start()])[-1]
+        prefix = re.sub(r"^\s*не[т]?[\s,]+лучше\b", "", prefix, flags=re.I)
+        if re.search(r"\b(?:если|как|почему|что|цитата|фраз[ау]|слова|сказал[аи]?|спросил[аи]?|не)\b", prefix, re.I):
+            continue
+        if match[0].casefold().startswith("мож") or _REMINDER_PREAMBLE.fullmatch(prefix):
+            return match
+    return None
+
+
 def explicit_reminder(text: str) -> bool:
-    return bool(re.search(r"(?:^|[.!?;,]\s*)(?:(?:ирис|iris|слушай|пожалуйста|ну|эй|так|ага|да|и|ещё|еще)[,\s:—-]+)*(?:напомни(?:те)?|можешь\s+(?:мне\s+)?напомнить|поставь\s+(?:мне\s+)?напоминание|создай\s+(?:мне\s+)?напоминание|remind\s+me)\b", text, re.I)) and not bool(re.search(r"\b(?:не\s+напоминай|не\s+надо\s+напоминать|как\s+(?:поставить|создать)\s+напоминание)\b", text, re.I))
+    return _reminder_command(text) is not None
+
+
+def reschedule_request(text: str) -> bool:
+    command = _reminder_command(text)
+    return bool(command and re.search(r"\b(?:измени\w*|перенес\w*|сдвин\w*)\b", command[0], re.I))
+
+
+def generic_reminder_title(text: str) -> str | None:
+    command = _reminder_command(text)
+    if command is None:
+        return None
+    # A timer or alarm with no task can be set without asking a model for a title.
+    suffix = text[command.end():].strip(" ,.!?")
+    if suffix and not _RELATIVE_TIME.fullmatch(re.sub(r"^на\s+", "через ", suffix.casefold())):
+        if not re.fullmatch(r"(?:(?:завтра|сегодня|послезавтра)\s+)?(?:в\s+)?\d{1,2}:\d{2}(?:\s+мск)?", suffix, re.I):
+            return None
+    alarm = re.search(r"\b(будильник|таймер)\b", command[0], re.I)
+    return alarm[0].capitalize() if alarm else "Напоминание"
 
 
 def failed_reminder_reply(metadata: dict | None, requested_text: str = "", model_reply: str = "") -> str | None:
     if not metadata or metadata.get("name") != "create_reminder":
         if explicit_reminder(requested_text):
-            question = re.search(r"во\s+сколько|когда|какую\s+дату|какой\s+день|утром\s+или\s+вечером|что\s+напомнить", model_reply, re.I)
+            question = re.search(r"(?:во|через)\s+сколько|когда|какую\s+дату|какой\s+день|утром\s+или\s+вечером|что\s+напомнить", model_reply, re.I)
             claimed = re.search(r"напомню|(?:создан|сохран[её]н|поставлен|установлен)[оа]?|(?:создал|сохранил|поставил)[аи]?|готово", model_reply, re.I)
             if question and not claimed:
                 return None
@@ -43,7 +93,12 @@ def failed_reminder_reply(metadata: dict | None, requested_text: str = "", model
         # The acknowledgement is a receipt for the saved deadline, not a new
         # model prediction. Use the same receipt for text and live voice.
         due = datetime.fromisoformat(result.get("display_due_at") or result["due_at"])
-        return f"Напоминание сохранено: {result['title']} — {due:%d.%m.%Y} в {due:%H:%M} ({due.tzname()})."
+        action = "перенесено" if result.get("rescheduled") else "сохранено"
+        return f"Напоминание {action}: {result['title']} — {due:%d.%m.%Y} в {due:%H:%M} ({due.tzname()})."
+    if result.get("status") == "target_missing":
+        return "В этом диалоге нет сохранённого напоминания, которое можно перенести."
+    if result.get("status") == "needs_time" and result.get("rescheduled"):
+        return "На какой день и время перенести напоминание? Пока оно стоит на прежнее время."
     if result.get("status") == "needs_time":
         return "Во сколько и в какой день тебе напомнить? Пока напоминание не создано."
     if result.get("status") in {"cancelled", "completed"}:
@@ -60,7 +115,7 @@ def reminder_request_from_context(text: str, context) -> str:
     turns = [message for message in context if getattr(message, "role", "") in {"user", "assistant"}]
     if turns and turns[-1].role == "user" and turns[-1].content.strip() == text.strip():
         turns = turns[:-1]
-    if len(turns) >= 2 and turns[-1].role == "assistant" and re.search(r"когда|како[ей]\s+(?:время|день)|во\s+сколько|уточни|\bwhen\b|what time|which day|clarify", turns[-1].content, re.I) and turns[-2].role == "user" and explicit_reminder(turns[-2].content):
+    if len(turns) >= 2 and turns[-1].role == "assistant" and re.search(r"когда|как(?:ое|ой)\s+(?:время|день)|(?:во|через)\s+сколько|уточни|\bwhen\b|what time|which day|clarify", turns[-1].content, re.I) and turns[-2].role == "user" and explicit_reminder(turns[-2].content):
         return turns[-2].content + "\nУточнение времени пользователем: " + text
     return text
 
@@ -82,14 +137,27 @@ class ReminderArguments(BaseModel):
         return value
 
 
+class ReminderSkillArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    title: str = Field(min_length=1, max_length=500)
+    due_at: str | None = Field(default=None, max_length=80, description="Необязательно. Срок определяется по словам пользователя.")
+    timezone_label: str = Field(default="", max_length=80)
+
+
 _NUMBERS = dict(zip(
     "один два три четыре пять шесть семь восемь девять десять одиннадцать двенадцать тринадцать четырнадцать пятнадцать шестнадцать семнадцать восемнадцать девятнадцать двадцать".split(), range(1, 21)))
 _NUMBERS.update(dict(zip("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split(), range(1, 21))))
 _NUMBERS.update({"одну": 1, "одна": 1, "две": 2, "час": 1, "полтора": 1.5, "полторы": 1.5})
+_NUMBERS.update({"тридцать": 30, "сорок": 40, "пятьдесят": 50, "шестьдесят": 60})
 _WEEKDAYS = dict(zip("понедельник вторник среду четверг пятницу субботу воскресенье".split(), range(7)))
 _WEEKDAYS.update(dict(zip("monday tuesday wednesday thursday friday saturday sunday".split(), range(7))))
 _MONTHS = dict(zip("января февраля марта апреля мая июня июля августа сентября октября ноября декабря".split(), range(1, 13)))
 _MONTHS.update(dict(zip("january february march april may june july august september october november december".split(), range(1, 13))))
+_RELATIVE_TIME = re.compile(
+    r"\b(?:через|in)\s+(?:(\d+(?:[.,]\d+)?|" + "|".join(_NUMBERS) +
+    r")\s*(секунд\w*|минут\w*|час\w*|дн\w*|день|недел\w*|seconds?|minutes?|hours?|days?|weeks?)"
+    r"|(полчаса|час|минуту|секунду|half\s+an?\s+hour|an?\s+(?:hour|minute|second)))\b",
+)
 
 
 def resolve_reminder_time(text: str, now: datetime) -> datetime | None:
@@ -106,23 +174,32 @@ def resolve_reminder_time(text: str, now: datetime) -> datetime | None:
             return None
         local_now = now.astimezone(timezone(timedelta(minutes=offset)))
 
+    if reschedule_request(text):
+        text = re.sub(r"\b(?:на|в)\s+(?=(?:\d+|" + "|".join(_NUMBERS) + r")\s+(?:секунд|минут|час))", "через ", text)
+    elif command := _reminder_command(text):
+        if re.search(r"\bтаймер\b", command[0]):
+            text = text[:command.end()] + re.sub(r"^\s+на\s+", " через ", text[command.end():])
     text = re.sub(r"\b(?:в|at)\s+(двадцать\s+(?:один|два|три)|" + "|".join(_NUMBERS) + r")\b",
         lambda m: "в " + str(20 + _NUMBERS[m[1].split()[1]] if m[1].startswith("двадцать ") else _NUMBERS[m[1]]), text)
     text = re.sub(r"\b(?:в\s+)?полдень\b|\b(?:at\s+)?noon\b", "в 12:00", text)
     text = re.sub(r"\b(?:в\s+)?полночь\b|\b(?:at\s+)?midnight\b", "в 00:00", text)
     clocks = list(re.finditer(r"\b(?:в|at)\s+(\d{1,2})(?::([0-5]\d))?(?![\d./:-])\b|(?<![\d:+-])\b(\d{1,2}):([0-5]\d)\b|\b(\d{1,2})\s*(am|pm)\b", text))
-    relative = re.search(r"\b(?:через|in)\s+(\d+(?:[.,]\d+)?|" + "|".join(_NUMBERS) + r")\s*(минут\w*|час\w*|дн\w*|день|недел\w*|minutes?|hours?|days?|weeks?)\b", text)
-    if re.search(r"\bчерез\s+полчаса\b|\bin\s+half\s+an?\s+hour\b", text):
-        return local_now + timedelta(minutes=30) if not clocks else None
-    if re.search(r"\bчерез\s+(?:час|минуту)\b|\bin\s+an?\s+(?:hour|minute)\b", text):
-        if clocks:
-            return None
-        return local_now + timedelta(minutes=1 if re.search(r"минуту|minute", text) else 60)
+    relatives = list(_RELATIVE_TIME.finditer(text))
+    if any(not re.search(r"\b(?:нет|лучше|точнее|даже|вернее|поправка|уточнение)\b", text[first.end():last.start()])
+           for first, last in zip(relatives, relatives[1:])):
+        return None
+    relative = relatives[-1] if relatives else None
     days_offset = None
     if relative:
-        quantity, unit = relative[1], relative[2]
-        amount = _NUMBERS[quantity] if quantity in _NUMBERS else float(quantity.replace(",", "."))
-        seconds = 60 if unit.startswith(("минут", "minute")) else 3600 if unit.startswith(("час", "hour")) else 604800 if unit.startswith(("недел", "week")) else 86400
+        if relative[3]:
+            unit = relative[3].split()[-1]
+            amount = 0.5 if relative[3].startswith(("пол", "half")) else 1
+            if unit == "полчаса":
+                unit = "час"
+        else:
+            quantity, unit = relative[1], relative[2]
+            amount = _NUMBERS[quantity] if quantity in _NUMBERS else float(quantity.replace(",", "."))
+        seconds = 1 if unit.startswith(("секунд", "second")) else 60 if unit.startswith(("минут", "minute")) else 3600 if unit.startswith(("час", "hour")) else 604800 if unit.startswith(("недел", "week")) else 86400
         if amount <= 0 or amount * seconds > 5 * 366 * 86400:
             return None
         if not clocks:
@@ -233,6 +310,10 @@ class ReminderService:
                 source_key TEXT NOT NULL UNIQUE, timezone_label TEXT NOT NULL,
                 revision TEXT NOT NULL, delivered_at TEXT, created_at TEXT NOT NULL
             )""")
+                connection.execute("""CREATE TABLE IF NOT EXISTS reminder_reschedules (
+                    source_key TEXT PRIMARY KEY,
+                    commitment_id TEXT NOT NULL REFERENCES scheduled_reminders(commitment_id) ON DELETE CASCADE
+                )""")
             self._schema_ready = True
 
     def create(self, title: str, due_at: str, *, timezone_label: str = "", source_key: str | None = None) -> dict:
@@ -285,14 +366,52 @@ class ReminderService:
             row = connection.execute("SELECT commitment_id FROM scheduled_reminders WHERE source_key = ?", (source_key,)).fetchone()
         return self.get(row["commitment_id"]) if row else None
 
-    def update(self, identifier: str, *, status: str | None = None, due_at: str | None = None) -> dict:
+    def reschedule(self, source_id: str, due: datetime) -> dict | None:
+        self._ensure_schema()
+        key = "turn:" + source_id
+        with self.store.consolidation_transaction() as connection:
+            previous = connection.execute(
+                "SELECT commitment_id FROM reminder_reschedules WHERE source_key = ?", (key,),
+            ).fetchone()
+            if previous is not None:
+                return self.get(previous["commitment_id"])
+            target = connection.execute("""
+                SELECT r.commitment_id, c.status
+                FROM scheduled_reminders r
+                JOIN memory_commitments c ON c.id = r.commitment_id
+                JOIN conversation_messages origin ON r.source_key = 'turn:' || origin.id
+                JOIN conversation_messages request ON request.id = ?
+                WHERE origin.session_id = request.session_id
+                  AND origin.sequence_no < request.sequence_no
+                ORDER BY origin.sequence_no DESC LIMIT 1
+            """, (source_id,)).fetchone()
+            if target is None:
+                return None
+            identifier = target["commitment_id"]
+            if target["status"] != "open":
+                return self.get(identifier)
+            if due <= self.now():
+                return {"status": "time_passed"}
+            self.update(identifier, due_at=due.isoformat())
+            connection.execute("UPDATE scheduled_reminders SET timezone_label = ? WHERE commitment_id = ?",
+                               (due.tzname(), identifier))
+            connection.execute("INSERT INTO reminder_reschedules VALUES (?, ?)", (key, identifier))
+            return self.get(identifier)
+
+    def update(
+        self, identifier: str, *, status: str | None = None, due_at: str | None = None,
+        delivery_token: str | None = None,
+    ) -> dict:
+        self._ensure_schema()
         if status is not None and status not in {"open", "completed", "cancelled"}:
             raise ValueError("Неизвестное состояние напоминания.")
         due = utc_date(due_at) if due_at else None
         if due and (due <= self.now() or due > self.now() + timedelta(days=366 * 5)):
             raise ValueError("Выберите будущую дату в пределах пяти лет.")
         with self.store.consolidation_transaction() as connection:
-            self.get(identifier)
+            current = self.get(identifier)
+            if delivery_token is not None and current["delivery_token"] != delivery_token:
+                raise ValueError("Срок или состояние напоминания уже изменились.")
             changes = {key: value for key, value in {"status": status, "due_at": due.isoformat() if due else None}.items() if value is not None}
             self.store.update_commitment(identifier, changes)
             if due or status is not None:
@@ -302,7 +421,13 @@ class ReminderService:
     def acknowledge(self, identifier: str, token: str) -> bool:
         self._ensure_schema()
         with self.store._connect() as connection:
-            cursor = connection.execute("UPDATE scheduled_reminders SET delivered_at = ? WHERE commitment_id = ? AND revision = ? AND delivered_at IS NULL", (self.now().isoformat(), identifier, token))
+            now = self.now().astimezone(UTC).isoformat()
+            cursor = connection.execute("""
+                UPDATE scheduled_reminders SET delivered_at = ?
+                WHERE commitment_id = ? AND revision = ? AND delivered_at IS NULL
+                  AND EXISTS (SELECT 1 FROM memory_commitments c
+                              WHERE c.id = scheduled_reminders.commitment_id AND c.status = 'open' AND c.due_at <= ?)
+            """, (now, identifier, token, now))
             return cursor.rowcount == 1
 
     def tick(self):
@@ -329,29 +454,39 @@ class ReminderService:
 
 
 def reminder_skill(service: ReminderService, context: Callable[[], dict]) -> Skill:
-    async def execute(args: ReminderArguments):
+    async def execute(args: ReminderSkillArguments):
         current = context()
         if not explicit_reminder(current.get("text", "")) or not current.get("source_id"):
             return {"status": "not_requested", "message": "Напоминание не создано: нужна явная просьба пользователя."}
         source_key = "turn:" + str(current["source_id"])
-        existing = await asyncio.to_thread(service.for_request, source_key)
+        rescheduling = reschedule_request(current["text"])
+        existing = None if rescheduling else await asyncio.to_thread(service.for_request, source_key)
         if existing is not None and existing["status"] != "open":
             return {"status": existing["status"], "id": existing["id"]}
         due = resolve_reminder_time(current["text"], service.now()) if existing is None else None
         if existing is None and due is None:
-            return {"status": "needs_time", "message": "Уточни точную дату, время и при необходимости часовой пояс. Напоминание пока не создано."}
+            return {"status": "needs_time", "rescheduled": rescheduling}
         due_at = due.isoformat() if due else existing["due_at"]
-        if existing is None and utc_date(due_at) <= service.now():
+        if not rescheduling and existing is None and utc_date(due_at) <= service.now():
             return {"status": "time_passed", "message": "Это время уже прошло. Уточни будущую дату, напоминание не создано."}
-        item = existing or await asyncio.to_thread(service.create, args.title, due_at,
-            timezone_label=datetime.fromisoformat(due_at).tzname(), source_key=source_key)
+        if rescheduling:
+            item = await asyncio.to_thread(service.reschedule, str(current["source_id"]), due)
+            if item is None:
+                return {"status": "target_missing"}
+            if item["status"] == "time_passed":
+                return item
+        else:
+            item = existing or await asyncio.to_thread(service.create, args.title, due_at,
+                timezone_label=datetime.fromisoformat(due_at).tzname(), source_key=source_key)
+        if item["status"] != "open":
+            return {"status": item["status"], "id": item["id"]}
         display_zone = due.tzinfo if due else datetime.fromisoformat(item["due_at"]).tzinfo
         if zone := re.fullmatch(r"UTC([+-])(\d{2}):(\d{2})", item["timezone_label"]):
             minutes = (int(zone[2]) * 60 + int(zone[3])) * (-1 if zone[1] == "-" else 1)
             display_zone = timezone(timedelta(minutes=minutes))
         return {"status": "scheduled", "id": item["id"], "title": item["title"], "due_at": item["due_at"],
             "display_due_at": utc_date(item["due_at"]).astimezone(display_zone).isoformat(),
-            "timezone_label": item["timezone_label"], "delivery": "Iris должна быть запущена; пропущенный срок будет показан при следующем запуске."}
+            "timezone_label": item["timezone_label"], "rescheduled": rescheduling}
 
-    return Skill("create_reminder", "Создай локальное напоминание только по явной просьбе напомнить. Не создавай по плану, цитате или рассуждению. Уточни недостающие дату и время. Текущее местное время: " + datetime.now().astimezone().isoformat(),
-        ReminderArguments, execute, lambda: explicit_reminder(context().get("text", "")))
+    return Skill("create_reminder", "Вызови этот навык для явной просьбы поставить локальное напоминание, будильник или таймер. Передай короткий текст задачи, срок проверит Iris. О выполнении говори только после результата навыка. Текущее местное время: " + service.now().astimezone().isoformat(),
+        ReminderSkillArguments, execute, lambda: explicit_reminder(context().get("text", "")))

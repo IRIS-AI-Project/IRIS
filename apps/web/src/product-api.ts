@@ -7,7 +7,7 @@ export type Reminder = {
 export function getReminders(dueOnly = false, signal?: AbortSignal): Promise<{ items: Reminder[] }> {
   return requestJson(`/reminders?due_only=${dueOnly}`, { signal });
 }
-export function updateReminder(id: string, patch: { status?: Reminder["status"]; due_at?: string }): Promise<Reminder> {
+export function updateReminder(id: string, patch: { status?: Reminder["status"]; due_at?: string; delivery_token?: string }): Promise<Reminder> {
   return requestJson(`/reminders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 export function acknowledgeReminder(item: Reminder): Promise<{ acknowledged: boolean }> {

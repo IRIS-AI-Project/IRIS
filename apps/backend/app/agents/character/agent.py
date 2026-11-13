@@ -545,8 +545,6 @@ class CharacterAgent:
         return plan_search(user_text, context)
 
     async def _plan_turn_search(self, session_id, user_text, context):
-        from apps.backend.app.reminders import reminder_request_from_context
-        self._reminder_user_text = reminder_request_from_context(self._reminder_user_text, context)
         feedback = getattr(self._dialogue_style_service, "word_feedback_prompt", None)
         self._speech_feedback_prompt = await asyncio.to_thread(feedback, user_text) if callable(feedback) else ""
         self._search_session_id = session_id
@@ -802,6 +800,23 @@ class CharacterAgent:
             self.last_web_search_metadata = {"query": "", "status": "invalid" if result.status == "invalid" else "unavailable",
                                              "sources": [], "attempts": [], "cached": False}
         return result
+
+    async def _direct_reminder_reply(self, context) -> str | None:
+        from apps.backend.app.reminders import (
+            explicit_reminder, explicit_reminder_time, failed_reminder_reply, generic_reminder_title,
+            reminder_request_from_context, reschedule_request,
+        )
+
+        text = self._reminder_user_text = reminder_request_from_context(self._reminder_user_text, context)
+        if not explicit_reminder(text):
+            return None
+        title = generic_reminder_title(text)
+        if reschedule_request(text) or not explicit_reminder_time(text):
+            title = title or "Напоминание"
+        if title is None:
+            return None
+        await self._perform_skill(SkillCall(name="create_reminder", arguments={"title": title}))
+        return failed_reminder_reply(self.last_skill_metadata, text)
 
     @staticmethod
     def _coalesce_search_calls(calls) -> SkillCall | None:
@@ -1408,6 +1423,12 @@ class CharacterAgent:
             built_context.messages if built_context is not None
             else await asyncio.to_thread(self._history.get_recent_messages, session_id, limit=self._history_limit)
         )
+        reminder_reply = await self._direct_reminder_reply(context)
+        if reminder_reply is not None:
+            return await asyncio.to_thread(
+                self._complete_forced_reply, session_id, reminder_reply, prompt_user_text, input_mode,
+                persist_reply=persist_reply, persist_reply_callback=persist_reply_callback,
+            )
         self._grounding_users = tuple(m.content for m in context if m.role == "user")
         turn_frame = frame_from_context(context, prompt_user_text)
         self._single_word_required = turn_frame.single_word
@@ -2281,6 +2302,15 @@ class CharacterAgent:
             built_context.messages if built_context is not None
             else await asyncio.to_thread(self._history.get_recent_messages, session_id, limit=self._history_limit)
         )
+        reminder_reply = await self._direct_reminder_reply(context)
+        if reminder_reply is not None:
+            reply = stored_reply_transform(reminder_reply) if stored_reply_transform is not None else reminder_reply
+            result = await asyncio.to_thread(
+                self._complete_forced_reply, session_id, reply, prompt_user_text, input_mode,
+                persist_reply=source_message is None if persist_reply is None else persist_reply,
+            )
+            yield str(result["reply"])
+            return
         self._grounding_users = tuple(m.content for m in context if m.role == "user")
         turn_frame = frame_from_context(context, prompt_user_text)
         self._single_word_required = turn_frame.single_word
