@@ -7,6 +7,7 @@ import {
 import { getReminders, updateReminder, type Reminder } from "../product-api";
 import { requestJson } from "../api";
 import { allowReminderNotifications } from "./ReminderDelivery";
+import { isDesktopApp } from "../desktop";
 import type { MemoryCommitment } from "../types";
 import { interfaceIntlLocale } from "../i18n";
 
@@ -70,7 +71,7 @@ export function RemindersPanel({ plans, onChanged, query = "", sortOrder = "date
   return <section className="reminders-panel" aria-label="Планы и напоминания">
     <div className="reminder-toolbar">
       <MaterialButton materialKey="reminders.filter" className="secondary" type="button" aria-pressed={filter === "all"} onClick={() => setFilter(filter === "open" ? "all" : "open")}>{filter === "open" ? "Показать завершённые" : "Скрыть завершённые"}</MaterialButton>
-      {reminders.length > 0 && <MaterialButton materialKey="reminders.permissions" className="secondary" type="button" title="Разрешить системные уведомления" onClick={() => { void allowReminderNotifications().then(granted => setNotice(granted ? "Системные уведомления разрешены" : "Напоминания будут показаны внутри Iris")).catch(() => setNotice("Напоминания будут показаны внутри Iris")); }}><Bell size={16} aria-hidden="true" />Уведомления</MaterialButton>}
+      {reminders.length > 0 && !isDesktopApp() && <MaterialButton materialKey="reminders.permissions" className="secondary" type="button" title="Разрешить системные уведомления" onClick={() => { void allowReminderNotifications().then(granted => setNotice(granted ? "Системные уведомления разрешены" : "Напоминания будут показаны внутри Iris")).catch(() => setNotice("Напоминания будут показаны внутри Iris")); }}><Bell size={16} aria-hidden="true" />Уведомления</MaterialButton>}
     </div>
     {error && <p role="alert" className="error-text">{error} <MaterialButton materialKey="reminders.retry" className="text-button" type="button" onClick={() => void refresh()}>Повторить</MaterialButton></p>}
     {notice && <p role="status">{notice}</p>}

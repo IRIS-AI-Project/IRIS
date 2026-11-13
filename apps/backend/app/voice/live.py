@@ -434,6 +434,7 @@ class VoiceSessionManager:
         emotion: str = "neutral",
         gesture: str = "auto",
         gesture_intensity: float = 1.0,
+        only_if_idle: bool = False,
     ) -> str | None:
         """Send a known Iris reply through the normal live-output protocol.
 
@@ -443,7 +444,7 @@ class VoiceSessionManager:
         exactly the events used for an ordinary streamed DeepSeek reply.
         """
         text = reply.strip()
-        if not text or not self.connected(session_id):
+        if not text or not self.connected(session_id) or (only_if_idle and self.active_utterance_id(session_id)):
             return None
         self._avatar_playback = {
             active_utterance_id: active_context
@@ -467,6 +468,8 @@ class VoiceSessionManager:
             base_pace=self._pace_for_style(style_override),
             playback_rate=max(MIN_SPEECH_TEMPO, min(MAX_SPEECH_TEMPO, float(playback_rate))),
         )
+        if only_if_idle:
+            self._active[session_id] = context
         context.task = loop.create_task(
             self._run_known_reply(
                 context,
@@ -477,6 +480,7 @@ class VoiceSessionManager:
                 emotion=emotion,
                 gesture=gesture,
                 gesture_intensity=gesture_intensity,
+                only_if_idle=only_if_idle,
             ),
             name=f"voice-{utterance_id}",
         )
@@ -518,6 +522,7 @@ class VoiceSessionManager:
         emotion: str,
         gesture: str,
         gesture_intensity: float,
+        only_if_idle: bool = False,
     ) -> None:
         """Stream a deterministic reply with the same websocket envelope as LLM output."""
         queue: asyncio.Queue[SpeechSegment | None] = asyncio.Queue(self._queue_size)
@@ -525,7 +530,11 @@ class VoiceSessionManager:
         try:
             # Match a normal incoming turn: the new response interrupts any
             # old voice, then becomes the sole active utterance for the session.
-            await self.cancel(context.session_id)
+            if only_if_idle:
+                if not self._is_active(context):
+                    return
+            else:
+                await self.cancel(context.session_id)
             if not self.connected(context.session_id):
                 return
             self._active[context.session_id] = context

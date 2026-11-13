@@ -191,6 +191,26 @@ async def test_known_reply_uses_the_regular_live_websocket_protocol() -> None:
     assert connection.segments[0][0]["utterance_id"] == utterance_id
 
 
+@pytest.mark.anyio
+async def test_idle_notification_preserves_the_current_utterance() -> None:
+    manager = VoiceSessionManager(MockTTSProvider())
+    connection = FakeVoiceConnection()
+    manager._connections["session"] = connection
+    current = UtteranceContext("session", "existing")
+    manager._active["session"] = current
+    reminder = dict(session_id="session", reply="Пора сдавать работу.", language="ru", voice="ru_f1", only_if_idle=True)
+
+    assert manager.enqueue_reply(**reminder) is None
+    assert manager.active_utterance_id("session") == "existing"
+    assert not current.cancelled
+    manager._active.pop("session")
+    utterance_id = manager.enqueue_reply(**reminder)
+    assert utterance_id and manager.enqueue_reply(**reminder) is None
+    await manager._active["session"].task
+    assert all(event["utterance_id"] == utterance_id for event in connection.events)
+    assert connection.segments
+
+
 def test_normalizer_keeps_ui_independent_tts_copy() -> None:
     source = "**Ответ** `value` https://example.com\n```python\nsecret()\n```"
     assert TextNormalizer().normalize(source) == "Ответ value ссылка"

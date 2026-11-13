@@ -274,3 +274,66 @@ def test_model_cannot_confirm_a_reminder_without_calling_the_tool(product_app, l
     assert "не создано" in result
     assert "Сохранила" not in result and "Напомню завтра" not in result
     assert not app.state.reminder_service.list()
+
+
+@pytest.mark.parametrize("live", [False, True], ids=["text", "voice-stream"])
+def test_followup_reminders_and_alarm_use_the_saved_deadline(product_app, live):
+    app, store = product_app
+    service = app.state.reminder_service
+    now = datetime.now(UTC)
+    service.now = lambda: now
+    original = "Ирис напомни через десять минут сдать работу, нет, через пятнадцать минут"
+    llm = ReplayLLM([command({"name": "create_reminder", "arguments": {"title": "Сдать работу"}}, live),
+                     response("Готово.", live)])
+    agent = CharacterAgent(llm, History(), 12, reminder_service=service)
+
+    async def turn(text, source=None):
+        if source is None:
+            source, _ = store.append_message(role="user", content=text, input_mode="voice", session_id="s")
+        if live:
+            return "".join([part async for part in agent.stream_user_message("s", text, source_message=source, persist_reply=False)])
+        return (await agent.handle_user_message("s", text, source_message=source, persist_reply=False))["reply"]
+
+    async def exercise():
+        assert "сохранено" in await turn(original)
+        first, = service.list()
+        assert datetime.fromisoformat(first["due_at"]) == now + timedelta(minutes=15)
+        change = "не лучше можешь пожалуйста изменить это напоминание чтобы оно было в тридцать минут"
+        source, _ = store.append_message(role="user", content=change, input_mode="voice", session_id="s")
+        assert "перенесено" in await turn(change, source)
+        updated, = service.list()
+        assert updated["id"] == first["id"]
+        assert updated["delivery_token"] != first["delivery_token"]
+        assert datetime.fromisoformat(updated["due_at"]) == now + timedelta(minutes=30)
+        assert "перенесено" in await turn(change, source)
+        assert service.get(first["id"])["delivery_token"] == updated["delivery_token"]
+        assert "сохранено" in await turn("а можешь еще поставить будильник через две минуты")
+        assert "сохранено" in await turn("слушай можешь поставить еще раз напоминание через две минуты")
+        items = service.list()
+        assert len(items) == 3
+        assert {item["title"] for item in items[:2]} == {"Будильник", "Напоминание"}
+        assert all(datetime.fromisoformat(item["due_at"]) == now + timedelta(minutes=2) for item in items[:2])
+
+    asyncio.run(exercise())
+
+
+def test_due_reminder_triggers_voice_once_after_ack(product_app):
+    app, _ = product_app
+    service = app.state.reminder_service
+    now = datetime.now(UTC)
+    service.now = lambda: now
+    item = service.create("Сдать работу", (now + timedelta(minutes=1)).isoformat())
+    announced = []
+
+    async def speak(identifier, token):
+        announced.append((identifier, token))
+
+    app.state.speak_due_reminder = speak
+    with TestClient(app) as client:
+        path = f"/reminders/{item['id']}/ack"
+        payload = {"delivery_token": item["delivery_token"]}
+        assert not client.post(path, json=payload).json()["acknowledged"]
+        now += timedelta(minutes=2)
+        assert client.post(path, json=payload).json()["acknowledged"]
+        assert not client.post(path, json=payload).json()["acknowledged"]
+    assert announced == [(item["id"], item["delivery_token"])]

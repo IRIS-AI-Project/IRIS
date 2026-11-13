@@ -531,6 +531,15 @@ class VoiceInputSessionManager:
         session.normalizer = None
         return True
 
+    def current_connection(self, session_id: str) -> InputConnection | None:
+        session = self._sessions.get(session_id)
+        return session.connection if session and session.connection.lease.active else None
+
+    def ready_for_reminder(self, session_id: str) -> bool:
+        session = self._sessions.get(session_id)
+        return bool(session and session.connection.lease.active and session.utterance is None
+                    and not session.pending_turn and not session.finalize_tasks)
+
     async def close_session(self, session_id: str, connection: InputConnection | None = None) -> None:
         session = self._sessions.get(session_id)
         if session is not None and (connection is None or session.connection is connection):

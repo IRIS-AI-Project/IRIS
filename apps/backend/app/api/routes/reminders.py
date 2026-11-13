@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from apps.backend.app.reminders import ReminderArguments
@@ -42,5 +42,9 @@ def update_reminder(identifier: str, payload: ReminderPatch, request: Request):
         raise HTTPException(422, str(exc)) from exc
 
 @router.post("/{identifier}/ack")
-def acknowledge_reminder(identifier: str, payload: Acknowledgement, request: Request):
-    return {"acknowledged": service(request).acknowledge(identifier, payload.delivery_token)}
+def acknowledge_reminder(identifier: str, payload: Acknowledgement, request: Request, background_tasks: BackgroundTasks):
+    acknowledged = service(request).acknowledge(identifier, payload.delivery_token)
+    speak = getattr(request.app.state, "speak_due_reminder", None)
+    if acknowledged and speak is not None:
+        background_tasks.add_task(speak, identifier, payload.delivery_token)
+    return {"acknowledged": acknowledged}

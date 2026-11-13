@@ -204,7 +204,7 @@ def create_app() -> FastAPI:
     history = TimelineHistoryAdapter(timeline_store) if timeline_store is not None else SQLiteMessageHistory(settings.database_path)
     from apps.backend.app.documents import DocumentService
     document_service = DocumentService()
-    from apps.backend.app.reminders import ReminderService
+    from apps.backend.app.reminders import ReminderService, reminder_voice_reply
     reminder_service = ReminderService(timeline_store, event_bus.publish) if timeline_store is not None else None
     runtime_defaults = RuntimeSettings(
         voice_language=settings.voice_default_language,
@@ -1586,7 +1586,49 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.history = history
     app.state.timeline_store = timeline_store
+    async def speak_due_reminder(identifier: str, token: str) -> None:
+        if reminder_service is None or not settings.voice_tts_enabled:
+            return
+        session_id = await asyncio.to_thread(reminder_service.store.active_session_id)
+        if not session_id or not voice_session_manager.connected(session_id):
+            return
+        connection = voice_input_session_manager.current_connection(session_id)
+        if connection is None:
+            return
+
+        async def current_reminder():
+            try:
+                item = await asyncio.to_thread(reminder_service.get, identifier)
+            except KeyError:
+                return None
+            return item if item["status"] == "open" and item["delivery_token"] == token else None
+
+        item = await current_reminder()
+        if item is None:
+            return
+        language = runtime_settings.voice_language
+        reply = await reminder_voice_reply(DeepSeekProvider(settings), item["title"], language)
+        voice = voice_service.resolve_tts_voice(language, runtime_settings.voice_tts_voice)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if voice_input_session_manager.current_connection(session_id) is not connection:
+                return
+            if (voice_input_session_manager.ready_for_reminder(session_id)
+                    and not voice_session_manager.active_utterance_id(session_id)):
+                if await current_reminder() is None:
+                    return
+                if (voice_input_session_manager.current_connection(session_id) is connection
+                        and voice_input_session_manager.ready_for_reminder(session_id)
+                        and voice_session_manager.enqueue_reply(
+                            session_id=session_id, reply=reply, language=language, voice=voice,
+                            style_override=app.state.voice_tts_style, playback_rate=runtime_settings.voice_playback_rate,
+                            only_if_idle=True,
+                        )):
+                    return
+            await asyncio.sleep(0.25)
+
     app.state.reminder_service = reminder_service
+    app.state.speak_due_reminder = speak_due_reminder
     app.state.document_service = document_service
     app.state.turn_coordinator = turn_coordinator
     app.state.context_manager = context_manager

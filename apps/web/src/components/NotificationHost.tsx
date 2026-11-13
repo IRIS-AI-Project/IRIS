@@ -6,7 +6,6 @@ import {
   IconInterfaceAlertTriangle,
   IconInterfaceAlertCircle,
   IconInterfaceInfoCircle,
-  IconInterfaceAlertAlarmBell2,
   IconInterfaceCopy,
   IconInterfaceChevronDown,
   IconInterfaceChevronUp,
@@ -35,7 +34,7 @@ function getIcon(type: NotificationType) {
     case "success":
       return <IconInterfaceCheckCircle size={24} aria-hidden="true" />;
     case "reminder":
-      return <IconInterfaceAlertAlarmBell2 size={24} aria-hidden="true" />;
+      return <img className="notification-reminder-portrait" src="/brand/iris-pixel/waving.png" alt="" />;
     case "info":
     default:
       return <IconInterfaceInfoCircle size={24} aria-hidden="true" />;

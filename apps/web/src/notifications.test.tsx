@@ -26,6 +26,13 @@ describe("Unified Notification System", () => {
   });
 
   describe("notificationStore / notify helper", () => {
+    it("keeps separate reminders with identical titles visible", () => {
+      notify.reminder("Iris · Напоминание", "Будильник", { id: "alarm-1" });
+      notify.reminder("Iris · Напоминание", "Будильник", { id: "alarm-2" });
+      notify.reminder("Iris · Напоминание", "Будильник", { id: "alarm-1" });
+      expect(notificationStore.getSnapshot().map(({ id }) => id)).toEqual(["alarm-1", "alarm-2"]);
+    });
+
     it("keeps the model warning visible until its settings action is used", () => {
       const openModels = vi.fn();
       act(() => { notify.warning("Голос пока недоступен", "Скачайте недостающие модели в настройках, чтобы включить голос.", {

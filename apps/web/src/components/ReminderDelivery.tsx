@@ -35,10 +35,10 @@ async function deliver(item: Reminder) {
     try { wasDisplayed ||= localStorage.getItem(key) === "1"; } catch { /* The in-memory guard still works. */ }
     if (!wasDisplayed) {
       const change = async (patch: Parameters<typeof updateReminder>[1]) => {
-        try { await updateReminder(item.id, patch); notify.dismiss(`reminder.${item.delivery_token}`); }
+        try { await updateReminder(item.id, { ...patch, delivery_token: item.delivery_token }); notify.dismiss(`reminder.${item.delivery_token}`); }
         catch (error) { notify.error("Напоминание", String(error)); }
       };
-      notify.reminder("Напоминание", item.title, { id: `reminder.${item.delivery_token}`, actions: [
+      notify.reminder("Iris · Напоминание", item.title, { id: `reminder.${item.delivery_token}`, actions: [
         { label: "Готово", onClick: () => { void change({ status: "completed" }); } },
         { label: "Через 15 минут", onClick: () => { void change({ due_at: new Date(Date.now() + 15 * 60_000).toISOString() }); } },
       ] });

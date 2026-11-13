@@ -53,6 +53,13 @@ function isAvatarCommandDiagnostic(notification: Pick<AppNotification, "title">)
   return /avatar\.command_(?:failed|ошибка|sent)/i.test(notification.title);
 }
 
+function sameNotification(existing: AppNotification, incoming: AppNotification): boolean {
+  return existing.id === incoming.id || (
+    incoming.type !== "reminder" && existing.type === incoming.type &&
+    existing.title === incoming.title && existing.message === incoming.message
+  );
+}
+
 class NotificationStore {
   private notifications: AppNotification[] = [];
   private listeners = new Set<Listener>();
@@ -84,7 +91,7 @@ class NotificationStore {
   private handleSyncShow(full: AppNotification): void {
     if (isAvatarCommandDiagnostic(full)) return;
     const existingIndex = this.notifications.findIndex(
-      (n) => n.id === full.id || (n.title === full.title && n.message === full.message && n.type === full.type)
+      (n) => sameNotification(n, full)
     );
 
     if (existingIndex >= 0) {
@@ -142,7 +149,7 @@ class NotificationStore {
 
     // If notification with the same ID or same title+message exists, replace it or bump it to top
     const existingIndex = this.notifications.findIndex(
-      (n) => n.id === id || (n.title === full.title && n.message === full.message && n.type === full.type)
+      (n) => sameNotification(n, full)
     );
 
     if (existingIndex >= 0) {
