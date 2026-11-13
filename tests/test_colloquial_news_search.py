@@ -115,6 +115,25 @@ async def test_direct_news_answer_uses_one_generation_and_keeps_rss_facts(live):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("live", [False, True])
+async def test_native_news_brief_keeps_rss_facts_and_omits_search_commentary(live):
+    reply = "Вижу только заголовки. " + ANSWER + " Это обрывки, а не сводка."
+    responses = [reply if live else json.dumps({"reply": reply, "emotion": "neutral", "intent": "question"})]
+    agent, news, search, llm, _ = setup_news(responses)
+    llm.supports_native_tools = True
+    question = "скажи пожалуйста там по новостям сводочку"
+    if live:
+        answer = "".join([c async for c in agent.stream_user_message("s", question, persist_reply=False)])
+    else:
+        answer = (await agent.handle_user_message("s", question, persist_reply=False))["reply"]
+    assert answer.strip() == ANSWER
+    assert news.get_news.await_args.kwargs["query"] == ""
+    search.search.assert_not_awaited()
+    assert len(llm.calls) == 1
+    assert any("Спутник исследует космос" in m.content for m in llm.calls[0])
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("live", [False, True])
 @pytest.mark.parametrize("second", [ANSWER, "Ни одной внятной новости не вытащила, конкретики ноль."])
 async def test_nonempty_rss_digest_cannot_be_replaced_by_global_no_news_claim(live, second):
     replies = ["Ни одной внятной новости не вытащила, конкретики ноль.", second]

@@ -212,7 +212,8 @@ class CharacterAgent:
         self._skills.register(Skill(
             "web_search", "Проверяет неизвестные факты и свежие события. Составь короткий точный запрос, выбери первоисточники и запасную формулировку при необходимости. Придумай acknowledgement для ожидания в том же вызове. Для медицинских фактов передавай публичную тему без личного рассказа. Не угадывай даты и релизы.",
             SearchArguments, self._execute_search_skill,
-            lambda: self._web_search_enabled() and getattr(self._situational_coordinator, "search_service", None) is not None and not self._search_performed,
+            lambda: (self._web_search_enabled() and getattr(self._situational_coordinator, "search_service", None) is not None
+                     and not self._search_performed and not (self.last_news_metadata or {}).get("sources")),
         ))
         for skill in skills:
             self._skills.register(skill)
@@ -448,9 +449,10 @@ class CharacterAgent:
         if not environment_requested:
             manual_city, location_mode, weather_enabled = None, "off", False
         native = getattr(self._llm_provider, "supports_native_tools", False)
-        if native:
-            allow_search = False
-        news_enabled = getattr(self._runtime_settings, "news_enabled", True) and not self._turn_lookup_suppressed and not self._turn_news_sources and not native
+        planned_news = bool(self._news_request_text or self._news_continuation)
+        news_enabled = (getattr(self._runtime_settings, "news_enabled", True)
+                        and not self._turn_lookup_suppressed and not self._turn_news_sources
+                        and (not native or planned_news))
         news_category = getattr(self._runtime_settings, "news_category", "all")
 
         resolve_turn = getattr(self._situational_coordinator, "resolve_turn", None)
@@ -467,7 +469,7 @@ class CharacterAgent:
                 enrichment = await resolve_turn(
                     self._news_request_text or user_text, manual_city=manual_city, location_mode=location_mode,
                     weather_enabled=weather_enabled, news_enabled=news_enabled,
-                    default_news_category=news_category, web_search_enabled=allow_search and self._web_search_enabled(),
+                    default_news_category=news_category, web_search_enabled=allow_search and (not native or planned_news) and self._web_search_enabled(),
                     **options,
                 )
             except BaseException as exc:
@@ -994,9 +996,16 @@ class CharacterAgent:
             self._lookup_cached = snapshot.cached
             for round_index in range(3):
                 attempts.extend({**a, "cached": snapshot.cached} for a in snapshot.attempts)
-                combined = {r.url: r for r in [*sources, *snapshot.results]}
+                combined = {r.url: r for r in sources}
+                for result in snapshot.results:
+                    previous = combined.get(result.url)
+                    if previous is None or previous.page_status != "read" or result.page_status == "read":
+                        combined[result.url] = result
+                ordered = [combined[url] for url in dict.fromkeys(r.url for r in [*snapshot.results, *sources])]
+                if request.mode == "news":
+                    ordered.sort(key=lambda r: r.page_status != "read")
                 sources = (service._rank(initial_query, list(combined.values()), domains, 3) if release else
-                           [combined[url] for url in dict.fromkeys(r.url for r in [*snapshot.results, *sources])][:3])
+                           ordered[:3])
                 snapshot = replace(snapshot, results=tuple(sources), attempts=tuple(attempts), requested_fact=request.goal or self._search_goal,
                                    evidence_warnings=evidence_warnings)
                 if self._search_service_calls >= 3 or time.monotonic() + .2 >= deadline:
@@ -1168,14 +1177,14 @@ class CharacterAgent:
             "Отключение света не доказывает попадание по сетям; цель и причина требуют прямых данных. Слабая выдача не означает тишину в мире. "
             "На уточнение дай запрошенную деталь. Отсутствие детали не опровергает всю прошлую новость; "
             "не заменяй ответ извинением или пересказом другой статьи. "
-            "Не рассказывай о сниппетах, счётчиках, нулевой выдаче и внутренних статусах. "
-            "Дай подтверждённую часть и кратко назови недостающую; не сочиняй продолжение текста. "
+            "Начни с фактов по вопросу. Для сводки выбери отдельные события из нужного региона и периода; "
+            "афиша и рубрикатор их не подтверждают. Без даты не подтверждай период. Не делай вывод, что событий не было. "
+            "Если важная деталь неизвестна, назови саму деталь. Заголовки, обрывки текста и работу поиска не обсуждай. "
         )
         format_rule = "Ответь live-репликой с avatar-тегом." if live else "Ответь JSON Character Protocol v3."
         budget = max(0, max_chars - len(rules) - len(format_rule) - 4)
         if snapshot is not None and snapshot.status == "ok" and (snapshot.answer or snapshot.results):
-            current_attempts = 0 if snapshot.cached else sum(bool(a.get("searched", True)) and not a.get("cached", False) for a in snapshot.attempts)
-            outcome = f"Достаточность: {snapshot.evidence_status or 'не оценена'}. Новых обращений: {current_attempts}; из кэша: {snapshot.cached}. Кэш не является новым поиском.\n" + snapshot.compact_summary(max_items=3, max_chars=budget)
+            outcome = snapshot.compact_summary(max_items=3, max_chars=budget)
         else:
             status = getattr(snapshot, "status", status_hint)
             descriptions = {"empty": "Источники ответили, подходящие данные не найдены; это не недоступность поиска.",
@@ -1939,12 +1948,29 @@ class CharacterAgent:
             async for visible in self._live_stream_after_search(followup_messages, guard_options):
                 yield visible
 
-    def _truthful_search_reply(self, content):
+    def _truthful_search_reply(self, content, *, streaming=False):
         snapshot = self._turn_search_snapshot
         attempts = [] if snapshot is None or snapshot.cached else [a for a in snapshot.attempts if a.get("searched", True) and not a.get("cached", False) and a.get("status") not in {"cooldown", "unconfigured", "free_only", "unverified_free_plan", "budget_unavailable", "quota_exhausted"}]
         audit = search_process_question(self._search_user_text)
         if audit:
             attempts = [a for item in self._search_operations if not item.get("cached") for a in item.get("attempts", []) if a.get("searched") is True and not a.get("cached", False)]
+        elif (snapshot is not None or self.last_news_metadata is not None) and not re.search(
+            r"заголовк|сниппет|обрыва", self._search_user_text, re.I,
+        ):
+            commentary = re.compile(
+                r"(?:^|\s)(?:только|лишь|одни)\s+(?:заголовк|сниппет|обрывк)|"
+                r"\b(?:это|тут)\s+(?:(?:только|просто)\s+)?обрывки\b|"
+                r"\b(?:текст\w*|стать\w*|содержани\w*)\s+(?:всё\s+)?(?:обрыва|обреза|оборва)\w*|"
+                r"\bновостей\s+(?:как таковых\s+)?нет\b", re.I,
+            )
+            parts = re.split(r"(?<=[.!?…])(?=\s|$)|(?<=\n)", content)
+            if any(commentary.search(part) for part in parts):
+                opening = re.match(r"^\s*\[\[avatar\b[^\]\r\n]*\]\]\s*", content, re.I)
+                content = "".join(part for part in parts if not commentary.search(part)).lstrip()
+                prefix = opening[0] if opening and not content.startswith(opening[0].lstrip()) else ""
+                if not content.strip():
+                    return prefix if streaming else "По этому вопросу пока нет подтверждённых деталей."
+                content = prefix + content
         positive = re.sub(r"\bне\s+(?:искала|гуглила|погуглила|отправляла|отправила)\b", "", content, flags=re.I)
         web_claim = bool(re.search(r"искала|гуглила|погуглила|выдач\w*.{0,45}(?:нет|пуст|плю|общ|наш)|(?:новост\w*|конкретик\w*).{0,30}(?:не\s+наш|в\s+выдаче\s+нет)|(?:запрос|поиск).{0,30}(?:отправила|отправляла)|(?:отправила|отправляла).{0,30}(?:запрос|раза|раз)|поиск\s+(?:выдал|нашел|нашёл|показал)|проверила\s+в\s+интернете", positive, re.I))
         web_claim = web_claim or bool(re.search(r"нарыла|вытащила", positive, re.I) and re.search(
@@ -1975,29 +2001,41 @@ class CharacterAgent:
 
     async def _truthful_search_stream(self, stream):
         buffered = ""
+        had_text = False
+        removed_commentary = False
         latency_once("agent.guard_hold", hold_reason="search_truthfulness")
         if search_process_question(self._search_user_text):
             async for delta in stream:
                 buffered += delta
             yield self._truthful_search_reply(buffered)
             return
+
+        def check(sentence):
+            nonlocal had_text, removed_commentary
+            checked = self._truthful_search_reply(sentence, streaming=True)
+            visible, _ = self._live_search_opening(checked)
+            had_text |= bool(visible)
+            removed_commentary |= checked != sentence and not visible
+            if checked and checked != sentence and not checked[-1].isspace() and (space := re.search(r"\s+$", sentence)):
+                checked += space[0]
+            return checked
+
         async for delta in stream:
             buffered += delta
             ready = []
             while (match := re.search(r"[.!?](?:\s|$)|\n", buffered)):
                 end = match.end()
                 sentence, buffered = buffered[:end], buffered[end:]
-                checked = self._truthful_search_reply(sentence)
-                if checked != sentence and (space := re.search(r"\s+$", sentence)):
-                    checked += space[0]
-                ready.append(checked)
+                ready.append(check(sentence))
             if ready:
                 yield "".join(ready)
             if len(buffered) > 1000:
-                yield self._truthful_search_reply(buffered)
+                yield check(buffered)
                 buffered = ""
         if buffered:
-            yield self._truthful_search_reply(buffered)
+            yield check(buffered)
+        if removed_commentary and not had_text:
+            yield "По этому вопросу пока нет подтверждённых деталей."
 
     def _search_reply_requires_repair(self, content):
         if self._search_promise_only(content):

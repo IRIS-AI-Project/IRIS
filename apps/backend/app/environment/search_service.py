@@ -74,6 +74,21 @@ def _final_outcome_evidence(result: SearchResult) -> bool:
     return True
 
 
+def _news_listing(result: SearchResult) -> bool:
+    path = urllib.parse.urlsplit(result.url).path.rstrip("/")
+    return not path or bool(re.search(
+        r"(?:^|/)(?:archive|archives|date|calendar)(?:/|$)|"
+        r"/sitemap(?:[._/-]|$)|/(?:news|novosti)$|/(?:day)?20\d{2}[-/]\d{1,2}[-/]\d{1,2}$", path, re.I
+    ))
+
+
+_NEWS_DATE = re.compile(
+    r"\b(?:20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|"
+    r"июля|августа|сентября|октября|ноября|декабря)(?:\s+20\d{2}(?:\s+года)?)?)\b",
+    re.I,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class SearchResult:
     title: str
@@ -123,23 +138,38 @@ class SearchSnapshot:
                 lines.append("Получены предварительные итоги; не называй их окончательными.")
         if self.answer:
             lines.append(f"Краткий ответ: {self.answer[:_MAX_SNIPPET_CHARS]}")
-        selected = list(self.results[:max_items])
-        # Spend most of the existing context budget on the best read document.
-        best_read = next((i for i, r in enumerate(selected) if r.page_status == "read"), None)
-        for index, res in enumerate(selected, 1):
+        footer = "Дата публикации не равна дате события или релиза. Факты вне этих данных не подтверждены проверкой."
+        room = max(0, max_chars - len(footer) - 1)
+        selected = list(enumerate(self.results[:max_items], 1))
+        # Keep source IDs stable for the evidence assessor, but put article
+        # content ahead of results that have only a title or description.
+        selected.sort(key=lambda item: item[1].page_status != "read")
+        sources = []
+        exact_text = re.search(r"куплет|полны.{0,15}текст|текст.{0,15}песн|спой|full text|lyrics", self.requested_fact or self.query, re.I)
+        for index, res in selected:
             date = f" (публикация: {res.published_at[:10]})" if res.published_at else ""
             evidence = res.page_text or res.snippet
-            limit = max(600, max_chars - 800 - 450 * (len(selected) - 1)) if index - 1 == best_read else 300
-            limitation = " [только поисковый сниппет]" if res.page_status != "read" else ""
-            if res.content_truncated or len(evidence) > limit:
-                limitation += " [содержание сокращено; полнота не подтверждена]"
-            if not res.published_at and re.search(r"новост|\bnews\b", self.query, re.I):
-                limitation += " [дата публикации неизвестна]"
-            document = _evidence_excerpt(evidence, self.requested_fact or self.query, limit) if res.page_status == "read" else model_text(evidence, limit)
             host = urllib.parse.urlsplit(res.url).hostname or ""
-            lines.append(f"[S{index}] {model_text(res.title, _MAX_TITLE_CHARS)}{date} [домен: {host}]: {document}{limitation}")
-        footer = "Дата публикации не равна дате события или релиза. Факты вне этих данных не подтверждены проверкой."
-        return ("\n".join(lines)[:max(0, max_chars - len(footer) - 1)] + "\n" + footer)[:max_chars]
+            label = "Статья" if res.page_status == "read" else "Описание"
+            prefix = f"[S{index}] {model_text(res.title, _MAX_TITLE_CHARS)}{date} [{host}]\n{label}: "
+            sources.append((res, evidence, prefix))
+        header = "\n".join(lines)[:room]
+        # Reserve headers first so a long first article cannot cut off a
+        # later source. Divide the rest among article bodies and short leads.
+        budget = room - len(header) - sum(len(prefix) + 1 for _, _, prefix in sources)
+        for position, (res, evidence, prefix) in enumerate(sources):
+            if len(header) + len(prefix) + 1 >= room:
+                break
+            remaining = sources[position:]
+            weight = 3 if res.page_status == "read" else 1
+            limit = max(0, budget * weight // sum(3 if r.page_status == "read" else 1 for r, _, _ in remaining))
+            if res.page_status != "read":
+                limit = min(limit, _MAX_SNIPPET_CHARS)
+            limitation = " [полнота не подтверждена]" if exact_text and (res.page_status != "read" or res.content_truncated or len(evidence) > limit) else ""
+            document = _evidence_excerpt(evidence, self.requested_fact or self.query, max(0, limit - len(limitation)))
+            header += "\n" + prefix + document + limitation
+            budget -= len(document) + len(limitation)
+        return (header[:room] + "\n" + footer)[:max_chars]
 
     def metadata(self) -> dict[str, object]:
         return {
@@ -233,7 +263,8 @@ def _unwrap_ddg_url(value: str) -> str:
 def _document_text(value: str, max_chars: int = 4000) -> str:
     """Keep document order/line breaks, while removing URLs from spoken evidence."""
     value = re.sub(r"https?://\S+", "", html.unescape(value))
-    return "\n".join(re.sub(r"[ \t\r]+", " ", line).strip() for line in value.splitlines()).strip()[:max_chars]
+    lines = "\n".join(re.sub(r"[^\S\n]+", " ", line).strip() for line in value.splitlines())
+    return re.sub(r"\n{3,}", "\n\n", lines).strip()[:max_chars]
 
 
 def _evidence_excerpt(value: str, query: str, max_chars: int) -> str:
@@ -241,7 +272,8 @@ def _evidence_excerpt(value: str, query: str, max_chars: int) -> str:
     document = _document_text(value, 16000)
     if len(document) <= max_chars:
         return document
-    lines = document.splitlines(keepends=True)
+    # Long paragraphs can hold the requested detail near the end.
+    lines = re.split(r"(?<=\n)|(?<=[.!?])(?= +\S)", document)
     wanted = terms(query)
     scores = [len(wanted & terms(line)) for line in lines]
     if release_question(query):
@@ -250,11 +282,20 @@ def _evidence_excerpt(value: str, query: str, max_chars: int) -> str:
         scores = [score + (5 if release_statement(line) else 0) for score, line in zip(scores, lines)]
     best = max(range(len(lines)), key=lambda i: scores[i], default=0)
     offset = sum(len(line) for line in lines[:best])
-    start = max(0, offset - min(150, max_chars // 5))
+    before = min(150, max(0, max_chars - len(lines[best])) // 2)
+    start = max(0, offset - before)
     if start:
         boundary = document.find("\n", start, offset)
         start = boundary + 1 if boundary >= 0 else start
-    return document[start:start + max_chars].strip()
+    end = start + max_chars
+    if end < len(document):
+        # Keep a complete sentence or line when the cut would leave a
+        # fragment, e.g. a number without its remaining digits or unit.
+        complete = max((m.end() for m in re.finditer(r"[.!?](?=\s)|\n", document[start:end + 1])
+                        if m.end() <= max_chars), default=0)
+        if complete >= max(max_chars // 2, offset - start + 1):
+            end = start + complete
+    return document[start:end].strip()
 
 
 class _ArticleParser(HTMLParser):
@@ -267,16 +308,27 @@ class _ArticleParser(HTMLParser):
         self.content_truncated = False
         self.used_description = False
         self.modified, self.article_depth = [], 0
+        self.article_count = 0
+        self.article_paragraphs = []
+        self.outer_capture = None
+        self.is_listing = False
+        self.article_metadata = False
         self.skips = {"script", "style", "nav", "header", "footer", "aside", "form", "noscript", "svg"}
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
-        if tag == "article":
+        if tag == "article" and not self.stack:
+            if not self.article_depth:
+                self.article_count += 1
+                self.outer_capture = self.capture, self.capture_depth, self.current
+                self.capture, self.capture_depth, self.current = None, 0, []
             self.article_depth += 1
         if tag == "meta":
             key = (a.get("property") or a.get("name") or "").lower()
             if key in {"article:published_time", "date", "datepublished"}:
                 self.dates.append(a.get("content", ""))
+            if key == "article:published_time" or (key == "og:type" and a.get("content") == "article"):
+                self.article_metadata = True
             if key in {"article:modified_time", "datemodified"}:
                 self.modified.append(a.get("content", ""))
             if key in {"description", "og:description"}:
@@ -297,19 +349,23 @@ class _ArticleParser(HTMLParser):
                 self.current.append("\n")
             elif tag in {"td", "th"}:
                 self.current.append(" ")
-        elif tag in {"p", "h1", "h2", "h3", "div", "pre", "table", "ul", "ol"}:
+        elif tag in {"p", "div", "pre", "table", "ul", "ol"}:
             self.capture, self.current = tag, []
             self.capture_depth = 1
 
     def handle_endtag(self, tag):
-        if tag == "article":
-            self.article_depth = max(0, self.article_depth - 1)
         if self.stack:
             if tag in self.stack:
                 index = len(self.stack) - 1 - self.stack[::-1].index(tag)
                 del self.stack[index:]
             if tag == "script":
                 self.ld_capture = False
+            return
+        if tag == "article" and self.article_depth:
+            self.article_depth -= 1
+            if not self.article_depth:
+                self.capture, self.capture_depth, self.current = self.outer_capture
+                self.outer_capture = None
             return
         if tag == self.capture:
             self.capture_depth -= 1
@@ -318,9 +374,8 @@ class _ArticleParser(HTMLParser):
                 return
             raw = "".join(self.current)
             text = _document_text(raw, 16000)
-            self.content_truncated |= len(raw) > 4000
             if len(text) >= 20:
-                self.paragraphs.append(text)
+                (self.article_paragraphs if self.article_depth else self.paragraphs).append(text)
             self.capture, self.current = None, []
         elif self.capture and tag in {"p", "div", "h1", "h2", "h3", "tr", "li"}:
             self.current.append("\n")
@@ -334,6 +389,8 @@ class _ArticleParser(HTMLParser):
             self.current.append(data)
 
     def evidence(self, query):
+        bodies = []
+        collection = False
         for raw in self.ld[:8]:
             try:
                 obj = json.loads(raw)
@@ -347,17 +404,22 @@ class _ArticleParser(HTMLParser):
                 if isinstance(item, list):
                     queue.extend(item[:20])
                 elif isinstance(item, dict):
+                    kind = item.get("@type")
+                    collection |= kind in ("CollectionPage", "ItemList")
+                    self.article_metadata |= isinstance(kind, str) and kind.endswith("Article")
                     if "datePublished" in item:
                         self.dates.append(str(item["datePublished"]))
                     if "dateModified" in item:
                         self.modified.append(str(item["dateModified"]))
                     body = item.get("articleBody")
-                    if isinstance(body, str):
-                        self.paragraphs.append(_document_text(body, 16000))
-                        self.content_truncated |= len(body) > 4000
+                    if isinstance(body, str) and len(body.strip()) >= 20:
+                        bodies.append(_document_text(body, 16000))
                     queue.extend(v for v in item.values() if isinstance(v, (dict, list)))
-        paragraphs = self.paragraphs or ([self.description] if self.description else [])
-        self.used_description = not bool(self.paragraphs)
+        self.is_listing = not (bodies or self.article_metadata) and (self.article_count > 1 or collection)
+        article_paragraphs = self.article_paragraphs if self.article_count == 1 or self.article_metadata else []
+        paragraphs = bodies or article_paragraphs or self.paragraphs
+        self.used_description = not paragraphs
+        paragraphs = paragraphs or ([self.description] if self.description else [])
         ranked = sorted(enumerate(paragraphs), key=lambda x: (-relevance(query, x[1]), x[0]))
         selected = sorted(ranked[:4])
         document = "\n".join(p for _, p in selected)
@@ -376,7 +438,7 @@ async def _public_address(host: str, port: int) -> str:
     return str(ips[0])
 
 
-async def _read_public_page(client: httpx.AsyncClient, url: str, max_bytes: int = 512_000) -> bytes:
+async def _read_public_page(client: httpx.AsyncClient, url: str, max_bytes: int = 1_000_000) -> bytes:
     for _ in range(4):
         parsed = urllib.parse.urlsplit(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
@@ -559,6 +621,8 @@ class SearchService:
                 elif provider == "google_news":
                     response = await client.get("https://news.google.com/rss/search",
                         params={"q": query, "hl": "ru", "gl": "RU", "ceid": "RU:ru"})
+                elif provider == "petersburg_rss":
+                    response = await client.get("https://www.fontanka.ru/rss-feeds/rss.xml")
                 elif provider == "official_feed":
                     feed = official_release_feed(query)
                     if feed is None:
@@ -606,10 +670,11 @@ class SearchService:
                         provider=provider, content_truncated=parser.content_truncated))
             else:
                 root = ET.fromstring(response.content)
+                items = root.findall(".//item")[:60 if provider == "petersburg_rss" else 10]
                 results = [SearchResult(clean_text(i.findtext("title") or "", 120),
                     clean_text(re.sub(r"<[^>]+>", " ", html.unescape(i.findtext("description") or "")), 300), canonical_url(i.findtext("link") or ""),
                     published_at=(parse_date(i.findtext("pubDate") or "").isoformat() if parse_date(i.findtext("pubDate") or "") else ""),
-                    provider=provider) for i in root.findall(".//item")[:10]]
+                    provider=provider) for i in items]
             results = [replace(r, url=canonical_url(r.url)) for r in results if canonical_url(r.url)]
             return results, "ok" if results else "empty"
         except (TimeoutError, httpx.TimeoutException):
@@ -693,7 +758,7 @@ class SearchService:
                 if _final_outcome_evidence(item):
                     score += 0.5
             scored.append((score, item))
-        scored.sort(key=lambda x: (-x[0], -(parse_date(x[1].published_at).timestamp() if parse_date(x[1].published_at) else 0)))
+        scored.sort(key=lambda x: (-x[0], x[1].page_status != "read", -(parse_date(x[1].published_at).timestamp() if parse_date(x[1].published_at) else 0)))
         return [r for _, r in scored[:max_items]]
 
     async def _page(self, result, query):
@@ -705,10 +770,12 @@ class SearchService:
             parser = _ArticleParser()
             parser.feed(content.decode("utf-8", errors="replace"))
             text, date = parser.evidence(query)
+            if parser.is_listing:
+                return replace(result, page_status="listing")
             if text and not relevance(query, result.title + " " + text):
                 text = ""
             modified = [d for v in parser.modified if (d := parse_date(v)) is not None]
-            return replace(result, page_text=text, published_at=date or result.published_at,
+            return replace(result, page_text=text or result.page_text, published_at=date or result.published_at,
                            modified_at=max(modified).isoformat() if modified else "",
                            content_truncated=parser.content_truncated,
                            page_status=("snippet" if parser.used_description else "read") if text else "unavailable")
@@ -794,6 +861,17 @@ class SearchService:
         outcome = _outcome_query(query)
         release = release_question(query)
         preferred_domains = (release_domains(query) or preferred_domains) if release else preferred_domains
+        article_news = mode == "news" and not (release or outcome)
+        match_query = query
+        wants_events = False
+        if article_news:
+            # A publication date need not appear in an individual headline.
+            # The network query and publication-date filters still use it.
+            topic = _NEWS_DATE.sub("", query)
+            topic = re.sub(r"\b(?:события дня|главные|последние|свежие|за сутки|вчера|недавно)\b", "", topic, flags=re.I)
+            topic = re.sub(r"\bпитер\w*\b", "Петербург", topic, flags=re.I)
+            match_query = topic.strip() if terms(topic) else query
+            wants_events = bool(re.search(r"афиш|мероприяти|концерт|выставк|куда сходить", query, re.I))
         topical = latest_release_question(query) or outcome or mode == "news" or bool(re.search(r"новост|\bnews\b|недавн|удал|последн.{0,35}(?:геро|перс|песн|трек|релиз)|latest.{0,20}(?:hero|update|song|release)", query, re.I))
         # Apply known primary domains to the first free attempt, then broaden.
         # Dates remain separate metadata and are also understood by free engines.
@@ -803,7 +881,7 @@ class SearchService:
         period = (f" after:{(lower - timedelta(days=1)).date().isoformat()}" if lower else "")
         period += f" before:{(upper + timedelta(days=1)).date().isoformat()}" if upper else ""
         scoped = query + " site:" + preferred_domains[0] if preferred_domains and not re.search(r"\bsite:", query) else query
-        providers = [("duckduckgo", scoped + period), ("google_news" if topical else "bing", query + period)]
+        providers = [("duckduckgo", scoped + period), ("google_news" if topical and not article_news else "bing", query + period)]
         if re.search(r"биограф|biography", query, re.I):
             providers.insert(0, ("wikipedia", query))
         if fallback_query and fallback_query.casefold() != query.casefold():
@@ -818,6 +896,11 @@ class SearchService:
             if refined != query:
                 providers.append(("refine", refined + period))
         refinement_query = providers[-1][1] if len(providers) >= 3 else None
+        if article_news:
+            providers.append(("google_news", query + period))
+            scope = terms(match_query)
+            if scope and "петер" in scope and scope <= {"санкт", "петер"} and not preferred_domains:
+                providers.insert(0, ("petersburg_rss", query))
         selected = self.selected_provider()
         if selected != "free":
             providers.insert(0, (selected, query))
@@ -842,7 +925,7 @@ class SearchService:
                     if progress:
                         progress("searching" if actual_query == query else "refining")
                     t = time.monotonic()
-                    if attempt_index == 0 and provider == "duckduckgo" and not (release or outcome or preferred_domains or since or until):
+                    if attempt_index == 0 and provider == "duckduckgo" and not (release or outcome or article_news or preferred_domains or since or until):
                         (winner, results), others, hedged = await self._hedged_free_search(
                             (provider, actual_query), providers[1], budget=budget, query=query, topical=topical)
                         provider, actual_query, status = winner["provider"], winner["query"], winner["status"]
@@ -856,6 +939,10 @@ class SearchService:
                                            if provider in API_PROVIDERS else await self._provider(provider, actual_query))
                     if provider in API_PROVIDERS and status in {"unconfigured", "unverified_free_plan", "quota_exhausted", "unauthorized", "blocked", "cooldown", "budget_unavailable", "free_only"}:
                         budget.denied_api[provider] = status
+                    raw_count = len(results)
+                    if article_news and not wants_events:
+                        results = [r for r in results if not _news_listing(r) and not re.search(
+                            r"\bафиша\b|\bкуда сходить\b|\bповод\w* выйти из дома\b", r.title, re.I)]
                     if since or until:
                         lower, upper = parse_date(since), parse_date(until)
                         results = [r for r in results if not parse_date(r.published_at) or
@@ -867,11 +954,11 @@ class SearchService:
                         candidates = [*results, *candidates]
                     else:
                         candidates.extend(results)
-                    ranked = self._rank(query, candidates, preferred_domains, rank_limit)
+                    ranked = self._rank(match_query, candidates, preferred_domains, rank_limit)
                     attempts.append({"provider": provider, "query": actual_query[:300], "status": status,
                                      "searched": _API_SENT.get() if provider in API_PROVIDERS else status != "cooldown",
-                                     "raw_count": len(results),
-                                     "accepted": len(self._rank(query, results, preferred_domains)),
+                                     "raw_count": raw_count,
+                                     "accepted": len(self._rank(match_query, results, preferred_domains)),
                                      "latency_ms": round((time.monotonic() - t) * 1000)})
                     preferred_found = any((primary_release_source(r.url, preferred_domains) if release else
                                            preferred_host(r.url, preferred_domains)) for r in ranked)
@@ -885,7 +972,9 @@ class SearchService:
                             # A schedule page is related, but does not answer
                             # who won. Use the remaining bounded providers.
                             continue
-                        if topical and attempt_index == 0 and not any(parse_date(r.published_at) for r in ranked):
+                        if article_news and sum(r.provider != "google_news" for r in ranked) < 2:
+                            continue
+                        if topical and not article_news and attempt_index == 0 and not any(parse_date(r.published_at) for r in ranked):
                             # A fresh-event query needs dated evidence, not just
                             # a plausible title from the first general provider.
                             continue
@@ -894,11 +983,12 @@ class SearchService:
                             # results disagree. Repeating the broad query loses
                             # time that is needed for reading the two sources.
                             providers[1], providers[2] = providers[2], providers[1]
-                        elif not conflict or (attempt_index > 0 and self._rank(query, results, preferred_domains)):
+                        elif not conflict or (attempt_index > 0 and self._rank(match_query, results, preferred_domains)):
                             break
                 needs_pages = topical or bool(re.search(r"причин|последств|объект|цел[ьиь]|диабет|инсулин|медицин|биограф|подроб|релиз|выход|выйдет|верси|release|version|\bкогда\b|\bdate\b|полны|текст|анекдот|вариант|joke|full text|геро|перс|ошиб|error|exception|troubleshoot|инструкц|настройк|установк", query, re.I))
                 date_claims = {m.group(0) for r in ranked for m in re.finditer(r"\b20\d{2}\b", r.snippet)}
-                if ranked and (needs_pages or len(date_claims) > 1):
+                weak_snippets = bool(ranked and not (ranked[0].snippet or ranked[0].page_text))
+                if ranked and (needs_pages or weak_snippets or len(date_claims) > 1):
                     readable = [r for r in ranked if r.page_status != "read" and r.url not in budget.page_results
                                 and urllib.parse.urlsplit(r.url).hostname != "news.google.com"]
                     readable.sort(key=lambda r: not preferred_host(r.url, preferred_domains))
@@ -907,14 +997,20 @@ class SearchService:
                     budget.requests += len(to_read)
                     if to_read and progress:
                         progress("reading")
-                    reads = await asyncio.gather(*(self._page(r, query) for r in to_read))
+                    reads = await asyncio.gather(*(self._page(r, match_query) for r in to_read))
                     budget.page_results.update({r.url: r for r in reads})
+                    if article_news and budget.pages < 3 and budget.requests < 6 and any(r.page_status != "read" for r in reads) and len(readable) > len(to_read):
+                        budget.pages += 1
+                        budget.requests += 1
+                        reserve = await self._page(readable[len(to_read)], match_query)
+                        budget.page_results[reserve.url] = reserve
                     evidence = [budget.page_results.get(r.url, r) for r in ranked]
-                    lower, upper = parse_date(since), parse_date(until)
+                    if article_news:
+                        evidence = [r for r in evidence if r.page_status != "listing"]
                     evidence = [r for r in evidence if not parse_date(r.published_at) or
                                 ((not lower or parse_date(r.published_at) >= lower) and
                                  (not upper or parse_date(r.published_at) < upper))]
-                    ranked = self._rank(query, evidence, preferred_domains, rank_limit)
+                    ranked = self._rank(match_query, evidence, preferred_domains, rank_limit)
         except TimeoutError:
             pass
         except asyncio.CancelledError:

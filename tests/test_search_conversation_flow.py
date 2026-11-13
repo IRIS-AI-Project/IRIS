@@ -65,6 +65,13 @@ def test_invalid_query_cannot_be_described_as_service_outage():
     assert agent._required_response_anchors("не Маша, а Даша") == ["даша"]
 
 
+def test_memory_anchors_require_an_instruction_to_iris():
+    assert CharacterAgent._required_response_anchors("Ирис, запомни название Северный архив") == ["северный", "архив"]
+    assert CharacterAgent._required_response_anchors("Ирис, можешь, пожалуйста, запомнить название Северный архив?") == ["северный", "архив"]
+    assert CharacterAgent._required_response_anchors("Какой номер должен был Антон запомнить?") == []
+    assert CharacterAgent._required_response_anchors("Антон, запомни название Северный архив") == []
+
+
 def test_search_operation_audit_is_bounded_and_session_local(tmp_path):
     from apps.backend.app.storage.timeline import TimelineStore, TimelineHistoryAdapter
     store = TimelineStore(tmp_path / "audit.sqlite3"); store.init_db()
@@ -116,6 +123,48 @@ def test_context_window_prefers_requested_fragment_and_marks_truncation():
     summary = snapshot.compact_summary(max_chars=1600)
     assert "Искомая строка номер два" in summary and "полнота не подтверждена" in summary
     assert "Искомая строка номер два" in snapshot.metadata()["sources"][0]["evidence"]
+
+
+@pytest.mark.anyio
+async def test_dated_local_news_reads_articles_instead_of_archive_and_calendar(monkeypatch):
+    service = SearchService()
+    archive = SearchResult("Новости Петербурга 8 ноября", "Лента дня", "https://example.org/date/2026/11/08")
+    calendar = SearchResult("Афиша Петербурга", "", "https://example.org/outings")
+    first = SearchResult("Петербург открыл мост", "", "https://example.org/bridge")
+    second = SearchResult("Петербург обновил трамваи", "", "https://example.org/trams")
+    service._provider = AsyncMock(side_effect=[([archive, calendar, first], "ok"), ([second], "ok")])
+    document = "В Петербурге завершили ремонт. Движение открыли по обеим полосам."
+    details = "В Петербурге на линию вышли пять трамваев с низким полом."
+    async def read_page(_client, url):
+        body = document if url == first.url else details
+        return ('<meta property="article:published_time" content="2026-11-08T07:00:00+03:00">'
+                '<div>НЕСВЯЗАННЫЕ ССЫЛКИ И НОВОСТИ<article><p>' + body +
+                '</p></article>ЕЩЁ НЕСВЯЗАННЫЕ ССЫЛКИ</div>').encode()
+    reader = AsyncMock(side_effect=read_page)
+    monkeypatch.setattr("apps.backend.app.environment.search_service._read_public_page", reader)
+    try:
+        snapshot = await service.search("новости Санкт-Петербурга 8 ноября 2026 события дня",
+                                        mode="news", since="2026-11-08T00:00:00+03:00")
+    finally:
+        await service.close()
+    assert {r.url for r in snapshot.results} == {first.url, second.url}
+    assert all(r.page_status == "read" for r in snapshot.results)
+    assert reader.await_count == 2
+    prompt = CharacterAgent._web_search_followup(snapshot, live=True)
+    assert document in prompt and details in prompt
+    assert "НЕСВЯЗАННЫЕ" not in prompt
+
+
+def test_context_keeps_late_fact_in_long_single_paragraph_and_second_article():
+    document = "Длинное вступление о другом событии. " * 110 + "Искомая деталь: мост открыли для движения."
+    articles = (
+        SearchResult("Главные события", "", "https://example.org/news-one", page_text=document, page_status="read"),
+        SearchResult("Ещё событие", "", "https://example.org/news-two",
+                     page_text="На городскую линию вышли пять новых трамваев.", page_status="read"),
+    )
+    summary = SearchSnapshot("мост открыли", articles).compact_summary(max_chars=900)
+    assert "Искомая деталь: мост открыли для движения." in summary
+    assert "На городскую линию вышли пять новых трамваев." in summary
 
 
 def test_named_material_request_preserves_noisy_title_and_does_not_search_supplied_body():

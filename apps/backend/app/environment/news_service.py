@@ -94,7 +94,7 @@ class NewsDigestSnapshot:
             line = prefix + title
             room = budget - len(line) - 3
             if room > 25 and article.snippet and article.snippet != article.title:
-                line += " — " + model_text(article.snippet, min(100, room))
+                line += " — " + model_text(article.snippet, room)
             lines.append(line[:budget])
             remaining -= len(lines[-1]) + 1
         return "\n".join(lines)[:max_chars]
@@ -240,7 +240,7 @@ class NewsService:
                 link = next((a.get("href", "") for a in links if a.get("rel", "alternate") == "alternate"), "")
             date = parse_date(item.findtext(prefix + ("published" if is_atom else "pubDate"))
                               or item.findtext(prefix + "updated") or "")
-            articles.append(NewsArticle(title, source, _clean_text(description, 160),
+            articles.append(NewsArticle(title, source, _clean_text(description, 600),
                 date.isoformat() if date else "", category, canonical_url(link)))
         return tuple(articles)
 
