@@ -159,32 +159,39 @@ it("сохраняет карточку галереи при отсутстви
   expect(opener).toBeEnabled();
 });
 
-it("перелистывает советы по кругу и с клавиатуры, сохраняя фокус", async () => {
+it("перелистывает карточки по кругу и с клавиатуры, сохраняя фокус", async () => {
   render(<StrictMode><OverviewPage {...props()} /></StrictMode>);
   await screen.findByRole("heading", { name: episode.title! });
-  const next = screen.getByRole("button", { name: "Следующий совет" });
+  const next = screen.getByRole("button", { name: "Следующая карточка" });
   next.focus();
   fireEvent.keyDown(next, { key: "End" });
-  expect(screen.getByRole("heading", { name: "Интересный факт" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "«Работает ртом»" })).toBeInTheDocument();
   expect(next).toHaveFocus();
   fireEvent.click(next);
-  expect(screen.getByRole("heading", { name: "Пусть Iris звучит по-вашему" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "А можно помедленнее?" })).toBeInTheDocument();
   fireEvent.keyDown(next, { key: "ArrowLeft" });
-  expect(screen.getByText("Совет 8 из 8")).toBeInTheDocument();
+  expect(screen.getByText("Карточка 10 из 10")).toBeInTheDocument();
 });
 
 it("открывает память и конкретные настройки из советов", async () => {
   const actions = props();
   render(<OverviewPage {...actions} />);
   await screen.findByRole("heading", { name: episode.title! });
-  const next = screen.getByRole("button", { name: "Следующий совет" });
+  const next = screen.getByRole("button", { name: "Следующая карточка" });
   fireEvent.click(screen.getByRole("button", { name: "Настроить голос" }));
   expect(actions.onOpenSettings).toHaveBeenLastCalledWith("voice", undefined);
   fireEvent.click(next);
   fireEvent.click(screen.getByRole("button", { name: "Посмотреть память" }));
   expect(actions.onOpenMemory).toHaveBeenCalledOnce();
+  fireEvent.click(next);
+  expect(screen.getByText(/Над Iris работают полтора разработчика/)).toBeInTheDocument();
+  fireEvent.click(next);
+  fireEvent.click(screen.getByRole("button", { name: "Выбрать сочетания" }));
+  expect(actions.onOpenSettings).toHaveBeenLastCalledWith("shortcuts", undefined);
+  fireEvent.click(next);
+  expect(screen.getByRole("heading", { name: "Всё началось с /chat" })).toBeInTheDocument();
   for (const [label, section, focusId] of [
-    ["Выбрать сочетания", "shortcuts", undefined], ["Открыть словарь", "voice", "voice-pronunciations"],
+    ["Открыть словарь", "voice", "voice-pronunciations"],
     ["Перейти к инкогнито", "memory", "memory-incognito"], ["Настроить поиск", "internet", undefined], ["Открыть резервные копии", "backups", undefined],
   ] as const) {
     fireEvent.click(next);

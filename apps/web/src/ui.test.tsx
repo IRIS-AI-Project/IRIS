@@ -1611,13 +1611,13 @@ describe("новые сценарии настроек", () => {
 
 it("открывает параметры из советов обзора и фокусирует нужное поле", async () => {
   render(<App />);
-  const next = await screen.findByRole("button", { name: "Следующий совет" });
-  for (let step = 0; step < 3; step += 1) fireEvent.click(next);
+  const next = await screen.findByRole("button", { name: "Следующая карточка" });
+  for (let step = 0; step < 5; step += 1) fireEvent.click(next);
   fireEvent.click(screen.getByRole("button", { name: "Открыть словарь" }));
   await waitFor(() => expect(document.getElementById("voice-pronunciations")).toHaveFocus());
   expect(screen.getByLabelText("Слово")).toBeVisible();
   fireEvent.click(within(screen.getByRole("navigation", { name: "Разделы приложения" })).getByRole("button", { name: "Обзор" }));
-  fireEvent.click(screen.getByRole("button", { name: "Следующий совет" }));
+  fireEvent.click(screen.getByRole("button", { name: "Следующая карточка" }));
   fireEvent.click(screen.getByRole("button", { name: "Перейти к инкогнито" }));
   await waitFor(() => expect(document.getElementById("memory-incognito")).toHaveFocus());
   expect(screen.getByRole("switch", { name: /Режим инкогнито/ })).toBeVisible();

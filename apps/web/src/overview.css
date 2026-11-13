@@ -27,7 +27,7 @@
 .overview-home .overview-hero-art .overview-image-missing { width: 100%; height: 100%; color: var(--color-text-muted); font-size: 11px; }
 
 .overview-home .overview-stats { grid-area: stats; display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; padding-top: 22px; }
-.overview-home .overview-stat { position: relative; display: flex; align-items: center; min-width: 0; gap: 14px; padding: 8px 20px; border-radius: var(--radius-card); background: var(--surface-card-2); }
+.overview-home .overview-stat { position: relative; display: flex; align-items: center; min-width: 0; gap: 14px; padding: 8px 20px; border-radius: var(--radius-card); corner-shape: var(--corner-shape); background: var(--surface-card-2); }
 .overview-home .overview-stat-conversations { background: var(--surface-card-3); }
 .overview-home .overview-stat-tokens { background: var(--surface-card-4); }
 .overview-home .overview-stat-icon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; color: var(--color-text-soft); border-radius: var(--radius-control); corner-shape: var(--corner-shape); background: var(--surface-status); box-shadow: var(--depth-status); }
@@ -47,7 +47,6 @@
 .overview-home .overview-artwork-image > img { width: 100%; height: 100%; min-height: 0; object-fit: cover; position: absolute; inset: 0; }
 .overview-home .overview-artwork-expand { position: absolute; right: 12px; bottom: 12px; color: white; filter: drop-shadow(0 1px 3px rgb(0 0 0 / .65)); }
 .overview-image-missing { display: flex; flex: 1; gap: 10px; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 12px; color: var(--color-text-muted); font-size: 12px; text-align: center; }
-.overview-home .overview-artwork:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 
 .overview-home .overview-last { grid-area: last; display: flex; align-items: center; gap: 16px; min-width: 0; padding: 18px 20px; }
 .overview-home .overview-conversation-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; color: var(--color-text-soft); }
@@ -57,17 +56,40 @@
 .overview-home .overview-last-message { margin: 6px 0 0; color: var(--color-text-soft); font-size: 13px; line-height: 1.55; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .overview-home .overview-last-open { flex-shrink: 0; width: 44px; height: 44px; }
 
-.overview-home .overview-tips { grid-area: tips; display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: min-content; padding: 20px; }
-.overview-home .overview-tips-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
-.overview-home .overview-tips-heading { margin: 0; font-size: 16px; line-height: 1.5; }
-.overview-home .overview-tip-illustration { position: relative; display: grid; place-items: center; flex: 1 1 88px; min-height: 64px; border-radius: var(--radius-plate); corner-shape: var(--corner-shape); background: radial-gradient(ellipse at 50% 48%, color-mix(in srgb, var(--color-focus) 9%, transparent), transparent 72%); }
-.overview-home .overview-tip-illustration img { position: absolute; inset: 0; margin: auto; display: block; width: min(64%, 144px); height: 100%; max-height: 104px; object-fit: contain; }
-.overview-home .overview-tip { display: flex; flex: 0 0 auto; flex-direction: column; gap: 18px; min-width: 0; min-height: min-content; }
-.overview-home .overview-tip h3 { margin: 0 0 10px; font-size: 18px; line-height: 1.45; text-wrap: balance; }
-.overview-home .overview-tip-description { margin: 0; color: var(--color-text-soft); font: 350 13px/1.65 var(--font-ui); text-wrap: pretty; }
-.overview-home .overview-tip-action { display: inline-flex; align-items: center; justify-content: space-between; align-self: stretch; gap: 12px; min-height: 46px; margin-top: auto; padding: 12px 16px; border-radius: var(--radius-control); corner-shape: var(--corner-shape); font: 450 13px/1.5 var(--font-ui); text-align: left; white-space: normal; }
-.overview-home .overview-tip-action > svg { flex-shrink: 0; }
+.overview-home .overview-tips {
+  grid-area: tips; display: flex; flex-direction: column; gap: 12px;
+  min-width: 0; min-height: min-content; padding: 18px;
+}
+.overview-home .overview-tips-header,
+.overview-home .overview-tips-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.overview-home .overview-tips-heading { margin: 0; font-size: 16px; line-height: 1.4; }
+.overview-home .overview-tips-count { flex-shrink: 0; color: var(--color-text-muted); font: 450 12px/1.4 var(--font-ui); font-variant-numeric: tabular-nums; }
+.overview-home .overview-tips-count strong { color: var(--color-text); font-weight: 500; }
+.overview-home .overview-tips-progress {
+  appearance: none; flex: 1; min-width: 0; max-width: 112px; height: 3px;
+  overflow: hidden; border: 0; border-radius: var(--radius-xs); background: var(--color-base-deep);
+}
+.overview-home .overview-tips-progress::-webkit-progress-bar { background: var(--color-base-deep); }
+.overview-home .overview-tips-progress::-webkit-progress-value { background: var(--color-accent-visual); border-radius: inherit; }
+.overview-home .overview-tips-progress::-moz-progress-bar { background: var(--color-accent-visual); border-radius: inherit; }
 .overview-home .overview-tips-controls { display: flex; flex-shrink: 0; gap: 6px; }
+.overview-home .overview-tip {
+  display: flex; flex: 1 0 auto; flex-direction: column; justify-content: center; align-items: flex-start;
+  gap: 16px; min-width: 0; padding-block: 12px;
+}
+.overview-home .overview-tip-copy { min-width: 0; max-width: 48ch; }
+.overview-home .overview-tip-topic { margin: 0 0 8px; color: var(--color-text-muted); font: 500 12px/1.4 var(--font-ui); }
+.overview-home .overview-tip h3 { margin: 0 0 10px; font-size: 25px; line-height: 1.15; text-wrap: pretty; }
+.overview-home .overview-tip[data-tip="origin"] h3 { font-family: var(--font-mono); font-weight: 600; }
+.overview-home .overview-tip-description { margin: 0; color: var(--color-text-soft); font: 400 13px/1.55 var(--font-ui); text-wrap: pretty; }
+.overview-home .overview-tip-action {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 100%; min-height: 44px; padding: 8px 14px; text-align: left; white-space: normal;
+  border-radius: var(--radius-control); corner-shape: var(--corner-shape);
+  color: var(--color-text); font: 500 13px/1.35 var(--font-ui);
+}
+.overview-home .overview-tip-action > svg { flex-shrink: 0; }
+.overview-home .overview-tip-note { margin: 12px 0 0; color: var(--color-text-muted); font: 400 12px/1.4 var(--font-ui); }
 .overview-home .overview-loading, .overview-home .overview-tip-position { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .app-dialog-host.overview-gallery-dialog > .app-dialog-card { width: min(1040px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); }
@@ -85,12 +107,11 @@
   .overview-home .overview-stat strong { font-size: clamp(19px, 3.8cqi, 27px); }
   .overview-home .overview-hero-copy { padding-left: 28px; }
   .overview-home .overview-profile h1 { font-size: 64px; }
-  .overview-home .overview-tips { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px 24px; }
-  .overview-home .overview-tips-header { grid-column: 1 / -1; }
-  .overview-home .overview-tip-illustration { grid-row: 2; min-height: 140px; }
-  .overview-home .overview-tip { min-height: 122px; }
+  .overview-home .overview-tip { min-height: 160px; }
 }
 @container overview (max-width: 440px) {
+  .overview-home .overview-tip { min-height: 180px; }
+  .overview-home .overview-tip h3 { font-size: 23px; }
   .overview-home .overview-layout { grid-template-rows: 260px auto 240px auto auto; gap: 16px; }
   .overview-home .overview-hero-copy { padding-left: 20px; width: 65%; }
   .overview-home .overview-profile h1 { font-size: 54px; }
@@ -102,8 +123,5 @@
   .overview-home .overview-stat strong { font-size: 19px; }
   .overview-home .overview-last { padding: 16px; gap: 8px; }
   .overview-home .overview-conversation-icon { display: none; }
-  .overview-home .overview-tips { padding: 20px; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; }
   .overview-home .overview-tips-heading { font-size: 15px; }
-  .overview-home .overview-tip h3 { font-size: 16px; }
-  .overview-home .overview-tip-illustration img { width: 100%; }
 }

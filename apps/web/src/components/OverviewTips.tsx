@@ -10,58 +10,83 @@ type TipAction = { label: string } & (
 );
 type OverviewTip = {
   id: string;
+  topic: string;
   title: string;
   description: string;
   action?: TipAction;
+  note?: string;
 };
 
 const tips: OverviewTip[] = [
   {
     id: "voice",
-    title: "Пусть Iris звучит по-вашему",
-    description: "Темп и выразительность голоса можно настроить под себя.",
+    topic: "Голос",
+    title: "А можно помедленнее?",
+    description: "Iris тараторит или читает как на сцене? Подкрутите скорость и выразительность.",
     action: { label: "Настроить голос", view: "settings", section: "voice" },
   },
   {
     id: "memory",
-    title: "Память можно поправить",
-    description: "Исправляйте неточности в воспоминаниях и удаляйте лишнее.",
+    topic: "Память",
+    title: "Я такого не говорил",
+    description: "Iris что-то запомнила не так? Откройте память, поправьте запись или удалите её.",
     action: { label: "Посмотреть память", view: "memory" },
   },
   {
+    id: "team",
+    topic: "Команда",
+    title: "«Да там на пять минут»",
+    description: "Над Iris работают полтора разработчика. А эта фраза у нас на полную ставку.",
+    note: "Из жизни проекта",
+  },
+  {
     id: "shortcuts",
-    title: "Частые действия — под рукой",
-    description: "Микрофон, поиск и звук — одним сочетанием клавиш.",
+    topic: "Горячие клавиши",
+    title: "Мышь может отдохнуть",
+    description: "Микрофон, поиск и звук можно повесить на клавиши. На случай срочного мута.",
     action: { label: "Выбрать сочетания", view: "settings", section: "shortcuts" },
   },
   {
+    id: "origin",
+    topic: "Как всё началось",
+    title: "Всё началось с /chat",
+    description: "В v0.1 проект назывался NeuroAsist. Поговорить с ним можно было текстом через API.",
+    note: "Июль 2026 · v0.1",
+  },
+  {
     id: "pronunciation",
-    title: "Сложное имя — знакомое звучание",
-    description: "Добавьте имена и термины в словарь, чтобы Iris произносила их правильно.",
+    topic: "Произношение",
+    title: "Здесь ударение на «а»",
+    description: "Iris коверкает имя или аббревиатуру? Подскажите ей произношение в словаре.",
     action: { label: "Открыть словарь", view: "settings", section: "voice", focusId: "voice-pronunciations" },
   },
   {
     id: "incognito",
-    title: "Не каждый разговор нужно запоминать",
-    description: "В режиме инкогнито новые сообщения и факты не сохраняются.",
+    topic: "Инкогнито",
+    title: "Этого разговора не было",
+    description: "Включите инкогнито, чтобы Iris не сохраняла новые сообщения и факты.",
     action: { label: "Перейти к инкогнито", view: "settings", section: "memory", focusId: "memory-incognito" },
   },
   {
     id: "search",
-    title: "Свежие факты лучше проверять",
-    description: "Подключите поиск, чтобы Iris проверяла свежую информацию по источникам.",
+    topic: "Веб-поиск",
+    title: "Погоди, я погуглю",
+    description: "Подключите поиск, чтобы Iris могла сверять свежие новости и факты по источникам.",
     action: { label: "Настроить поиск", view: "settings", section: "internet" },
   },
   {
     id: "backups",
-    title: "У важных разговоров может быть копия",
-    description: "Сохраните историю, память и настройки перед переездом на другой компьютер.",
+    topic: "Резервные копии",
+    title: "Переезд с вещами",
+    description: "Переезжаете на новый ПК? Разговоры, память и настройки влезут в один бэкап.",
     action: { label: "Открыть резервные копии", view: "settings", section: "backups" },
   },
   {
-    id: "team",
-    title: "Интересный факт",
-    description: "Данный проект разрабатывает полтора разработчика.",
+    id: "avatar",
+    topic: "Из истории Iris",
+    title: "«Работает ртом»",
+    description: "Так назвали коммит, в котором Unity-аватар начал шевелить губами под голос Iris.",
+    note: "13 июля 2026 · 5d733e3",
   },
 ];
 
@@ -99,34 +124,39 @@ export function OverviewTips({ onOpenSettings, onOpenMemory }: {
   return <section className="overview-surface overview-tips overview-reveal" aria-label="Больше об Iris" aria-roledescription="карусель">
     <header className="overview-tips-header">
       <h2 className="overview-tips-heading">Больше об Iris</h2>
-      <div className="overview-tips-controls" role="group" aria-label="Перелистывание советов" onKeyDown={event => {
+      <span className="overview-tips-count" aria-hidden="true"><strong>{String(index + 1).padStart(2, "0")}</strong> / {tips.length}</span>
+    </header>
+    <div id="overview-tip-content" className="overview-tip" data-tip={tip.id} ref={contentRef}>
+      <div className="overview-tip-copy" aria-live="polite" aria-atomic="true">
+        <p className="overview-tip-topic">{tip.topic}</p>
+        <h3>{tip.title}</h3>
+        <p className="overview-tip-description">{tip.description}</p>
+        {tip.note && <p className="overview-tip-note">{tip.note}</p>}
+        <span className="overview-tip-position">Карточка {index + 1} из {tips.length}</span>
+      </div>
+      {canOpen && <MaterialButton key={tip.id} materialKey={`overview.tips.${tip.id}`} type="button" className="secondary-button overview-tip-action" onClick={() => {
+        if (action.view === "memory") onOpenMemory();
+        else onOpenSettings?.(action.section, action.focusId);
+      }}>
+        <span>{action.label}</span><IconInterfaceArrowUpRight size={16} aria-hidden="true" />
+      </MaterialButton>}
+    </div>
+    <footer className="overview-tips-footer">
+      <progress className="overview-tips-progress" value={index + 1} max={tips.length} aria-hidden="true" />
+      <div className="overview-tips-controls" role="group" aria-label="Перелистывание карточек" onKeyDown={event => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (event.key === "ArrowLeft") { event.preventDefault(); select(index - 1); }
         else if (event.key === "ArrowRight") { event.preventDefault(); select(index + 1); }
         else if (event.key === "Home") { event.preventDefault(); select(0); }
         else if (event.key === "End") { event.preventDefault(); select(tips.length - 1); }
       }}>
-        <MaterialButton materialKey="overview.tips.previous" type="button" className="icon-button" aria-label="Предыдущий совет" aria-controls="overview-tip-content" onClick={() => select(index - 1)}>
+        <MaterialButton materialKey="overview.tips.previous" type="button" className="icon-button" aria-label="Предыдущая карточка" aria-controls="overview-tip-content" onClick={() => select(index - 1)}>
           <IconInterfaceChevronLeft size={19} aria-hidden="true" />
         </MaterialButton>
-        <MaterialButton materialKey="overview.tips.next" type="button" className="icon-button" aria-label="Следующий совет" aria-controls="overview-tip-content" onClick={() => select(index + 1)}>
+        <MaterialButton materialKey="overview.tips.next" type="button" className="icon-button" aria-label="Следующая карточка" aria-controls="overview-tip-content" onClick={() => select(index + 1)}>
           <IconInterfaceChevronRight size={19} aria-hidden="true" />
         </MaterialButton>
       </div>
-    </header>
-    <div className="overview-tip-illustration" aria-hidden="true"><img src="/brand/iris-mark-dark.svg" alt="" draggable={false} /></div>
-    <div id="overview-tip-content" className="overview-tip" ref={contentRef}>
-      <div className="overview-tip-copy" aria-live="polite" aria-atomic="true">
-        <h3>{tip.title}</h3>
-        <p className="overview-tip-description">{tip.description}</p>
-        <span className="overview-tip-position">Совет {index + 1} из {tips.length}</span>
-      </div>
-      {canOpen && <MaterialButton key={tip.id} materialKey={`overview.tips.${tip.id}`} type="button" className="secondary-button overview-tip-action" onClick={() => {
-        if (action.view === "memory") onOpenMemory();
-        else onOpenSettings?.(action.section, action.focusId);
-      }}>
-        <span>{action.label}</span><IconInterfaceArrowUpRight size={17} aria-hidden="true" />
-      </MaterialButton>}
-    </div>
+    </footer>
   </section>;
 }
