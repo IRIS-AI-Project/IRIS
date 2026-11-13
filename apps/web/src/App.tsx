@@ -2723,7 +2723,7 @@ export function ChatPage({
         <div className="chat-idle-stage">
           <ChatWelcomeScenery active={isActive} />
           <div className="chat-start-banner">
-            <ChatWelcomePortrait active={isActive} />
+            <ChatWelcomePortrait />
             <div className="chat-start-banner-inner">
               <MaterialButton materialKey={"App.button-4"}
                 className="chat-start-button"
