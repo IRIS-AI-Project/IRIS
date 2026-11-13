@@ -37,6 +37,7 @@ from apps.backend.app.voice.delivery import (
     make_speech_segment,
 )
 from apps.backend.app.voice.style import VoiceStyle, coerce_voice_style, resolve_voice_style
+from apps.backend.app.voice.latency import VoiceLatencyTrace, current_voice_trace, latency_mark, latency_span
 from apps.backend.app.avatar.schemas import StreamMotionCuePayload
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,10 @@ class UtteranceContext:
     tracks_end_of_speech: bool = False
     avatar_segment_texts: dict[int, str] = field(default_factory=dict)
     owner_is_current: Callable[[], bool] | None = None
+    latency_trace: VoiceLatencyTrace | None = None
+    playback_owner: str | None = None
+    playback_recorded: bool = False
+    playback_muted: bool | None = None
 
 
 @dataclass
@@ -142,6 +147,7 @@ class VoiceSessionManager:
         self._active: dict[str, UtteranceContext] = {}
         self._playback_pending: dict[str, UtteranceContext] = {}
         self._avatar_playback: dict[str, UtteranceContext] = {}
+        self._latency_contexts: dict[str, UtteranceContext] = {}
         self._avatar_service = avatar_service
         self._event_publisher = event_publisher
         self._character_state_service = character_state_service
@@ -171,6 +177,10 @@ class VoiceSessionManager:
 
     async def unregister(self, session_id: str, connection: VoiceConnection) -> None:
         if self._connections.get(session_id) is connection:
+            for utterance_id, context in list(self._latency_contexts.items()):
+                if context.session_id == session_id:
+                    context.latency_trace.finish("disconnected")
+                    self._latency_contexts.pop(utterance_id, None)
             self._connections.pop(session_id, None)
             self._connection_events.setdefault(session_id, asyncio.Event()).clear()
             await self.cancel(session_id, notify=False)
@@ -206,6 +216,9 @@ class VoiceSessionManager:
         self._connection_events.clear()
         self._playback_pending.clear()
         self._avatar_playback.clear()
+        for context in self._latency_contexts.values():
+            context.latency_trace.finish("disconnected")
+        self._latency_contexts.clear()
 
     async def avatar_playback_segment_started(self, utterance_id: str, sequence: int) -> None:
         """Forward the renderer's real audio boundary to the browser subtitles."""
@@ -226,6 +239,7 @@ class VoiceSessionManager:
         context = self._avatar_playback.get(utterance_id)
         if context is None:
             return
+        self._record_playback_started(context, "unity")
         connection = self._connections.get(context.session_id)
         if connection is not None:
             await connection.json({
@@ -238,6 +252,9 @@ class VoiceSessionManager:
         context = self._avatar_playback.pop(utterance_id, None)
         if context is None:
             return
+        if context.playback_owner in {None, "unity"} and context.latency_trace is not None:
+            context.latency_trace.finish("completed")
+            self._latency_contexts.pop(utterance_id, None)
         connection = self._connections.get(context.session_id)
         if connection is not None:
             await connection.json({
@@ -250,6 +267,9 @@ class VoiceSessionManager:
         context = self._avatar_playback.pop(utterance_id, None)
         if context is None:
             return
+        if context.playback_owner in {None, "unity"} and context.latency_trace is not None:
+            context.latency_trace.finish("error", reason="playback_failed")
+            self._latency_contexts.pop(utterance_id, None)
         connection = self._connections.get(context.session_id)
         if connection is not None:
             await connection.json({
@@ -258,20 +278,76 @@ class VoiceSessionManager:
             })
 
     def playback_started(self, session_id: str, utterance_id: str | None) -> None:
-        """Record the first audible browser frame against the EoS stopwatch."""
-        context = self._active.get(session_id) or self._playback_pending.get(session_id)
+        """Record a software start acknowledgement, not an acoustic measurement."""
+        context = self._playback_context(session_id, utterance_id)
+        if context is not None:
+            self._record_playback_started(context, "desktop_ui")
+
+    def _playback_context(self, session_id: str, utterance_id: str | None) -> UtteranceContext | None:
+        if utterance_id is not None and not isinstance(utterance_id, str):
+            return None
+        candidates = [self._active.get(session_id), self._playback_pending.get(session_id)]
+        if utterance_id:
+            candidates.append(self._avatar_playback.get(utterance_id))
+            candidates.append(self._latency_contexts.get(utterance_id))
+        for context in candidates:
+            if (context is not None and context.session_id == session_id and not context.cancelled
+                    and (utterance_id is None or context.utterance_id == utterance_id)
+                    and (context.owner_is_current is None or context.owner_is_current())):
+                return context
+        return None
+
+    def set_playback_owner(self, session_id: str, utterance_id: str | None, owner: str, muted: bool | None = None) -> None:
+        if not isinstance(owner, str) or not isinstance(utterance_id, str):
+            return
+        context = self._playback_context(session_id, utterance_id)
+        if (context is None or owner not in {"unity", "desktop_ui"} or context.playback_recorded
+                or (context.latency_trace is not None and context.latency_trace.finished)):
+            return
+        context.playback_owner = owner
+        context.playback_muted = muted if isinstance(muted, bool) else None
+        if context.latency_trace is not None:
+            context.latency_trace.mark("playback.owner", playback_owner=owner, muted=context.playback_muted)
+
+    def playback_timing(self, session_id: str, utterance_id: str | None, payload: dict) -> None:
+        context = self._playback_context(session_id, utterance_id)
+        if (context is None or context.playback_owner == "unity" or context.latency_trace is None
+                or context.latency_trace.finished):
+            return
+        stage = payload.get("stage")
+        if not isinstance(stage, str) or stage not in {"decoded", "scheduled", "started"} or payload.get("segment_id") != 0:
+            return
+        fields = {key: value for key, value in payload.items()
+                  if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 120_000}
+        context.latency_trace.once("playback.browser_" + stage, playback_owner="desktop_ui", **fields)
+
+    def playback_finished(self, session_id: str, utterance_id: str | None) -> None:
+        context = self._playback_context(session_id, utterance_id)
+        if context is not None and context.playback_owner in {None, "desktop_ui"}:
+            if context.latency_trace is not None:
+                context.latency_trace.finish("completed")
+            self._latency_contexts.pop(context.utterance_id, None)
+
+    def _record_playback_started(self, context: UtteranceContext, owner: str) -> None:
         if (
-            context is None
-            or not context.tracks_end_of_speech
-            or (utterance_id and context.utterance_id != utterance_id)
+            not context.tracks_end_of_speech or context.cancelled or context.playback_recorded
+            or (context.latency_trace is not None and context.latency_trace.finished)
+            or (context.playback_owner is not None and context.playback_owner != owner)
+            or (context.owner_is_current is not None and not context.owner_is_current())
         ):
             return
-        self._playback_pending.pop(session_id, None)
+        context.playback_recorded = True
+        context.playback_owner = owner
+        self._playback_pending.pop(context.session_id, None)
         elapsed_ms = int((time.perf_counter() - context.started_at) * 1000)
         self._publish_latency(
             context,
             "voice.end_of_speech_to_playback",
             end_of_speech_to_playback_ms=elapsed_ms,
+            playback_owner=owner,
+            measurement="software_playback_ack",
+            origin="server_vad_estimate",
+            muted=context.playback_muted,
         )
 
     def active_utterance_id(self, session_id: str) -> str | None:
@@ -325,7 +401,13 @@ class VoiceSessionManager:
             started_at=pipeline_started_at or time.perf_counter(),
             tracks_end_of_speech=pipeline_started_at is not None,
             owner_is_current=owner_is_current,
+            latency_trace=current_voice_trace(),
         )
+        if context.latency_trace is not None:
+            context.latency_trace.bind(utterance_id)
+            self._latency_contexts[utterance_id] = context
+            while len(self._latency_contexts) > 120:
+                self._latency_contexts.pop(next(iter(self._latency_contexts)))
         self._active[session_id] = context
         context.task = asyncio.create_task(
             self._run(
@@ -399,6 +481,10 @@ class VoiceSessionManager:
         return utterance_id
 
     async def cancel(self, session_id: str, utterance_id: str | None = None, notify: bool = True) -> None:
+        for tracked_id, tracked in list(self._latency_contexts.items()):
+            if tracked.session_id == session_id and (utterance_id is None or tracked_id == utterance_id):
+                tracked.latency_trace.finish("cancelled")
+                self._latency_contexts.pop(tracked_id, None)
         context = self._active.get(session_id)
         if context is None or (utterance_id and context.utterance_id != utterance_id):
             return
@@ -545,6 +631,10 @@ class VoiceSessionManager:
             context.text_completed = True
             await self._enqueue(queue, worker, None)
             await worker
+            latency_mark("generation.completed")
+            if context.latency_trace is not None and not context.audio_started:
+                context.latency_trace.finish("empty")
+                self._latency_contexts.pop(context.utterance_id, None)
             await self._send(context, "voice.utterance.finished")
             if self._avatar_service is not None and self._is_active(context):
                 await self._avatar_service.stream_end(
@@ -882,6 +972,8 @@ class VoiceSessionManager:
                     session_id=context.session_id, utterance_id=context.utterance_id
                 )
         except asyncio.CancelledError:
+            if context.latency_trace is not None:
+                context.latency_trace.finish("cancelled")
             if on_assistant_interrupted is not None:
                 await on_assistant_interrupted("".join(reply_parts).strip())
             if avatar_start_task is not None:
@@ -905,6 +997,8 @@ class VoiceSessionManager:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await worker
             tts_failed = worker.done() and not worker.cancelled() and worker.exception() is not None
+            if context.latency_trace is not None:
+                context.latency_trace.finish("error", error_type=type(exc).__name__)
             code = "provider_unavailable" if context.text_completed or tts_failed else "llm_error"
             await self._send(context, "voice.error", code=code, message=str(exc))
         finally:
@@ -993,9 +1087,10 @@ class VoiceSessionManager:
         async def produce() -> None:
             started = time.perf_counter()
             try:
-                async for part in self._synthesize_part_stream(segment, language, voice, style=style):
-                    synth_ms = int((time.perf_counter() - started) * 1000)
-                    await output.put((part, synth_ms))
+                with latency_span("tts.job", segment_id=index, text_length=len(segment.text)):
+                    async for part in self._synthesize_part_stream(segment, language, voice, style=style):
+                        synth_ms = int((time.perf_counter() - started) * 1000)
+                        await output.put((part, synth_ms))
             except Exception as exc:
                 await output.put(exc)
             finally:
@@ -1067,26 +1162,30 @@ class VoiceSessionManager:
             # scheduled first frame. Short replies can otherwise finish on the
             # server before decodeAudioData sends playback.started back.
             self._playback_pending[context.session_id] = context
-        await connection.segment(started, audio, finished)
+        if context.latency_trace is not None:
+            context.latency_trace.mark("audio.segment_ready", segment_id=segment_id, audio_bytes=len(audio), synthesis_ms=synth_ms)
+        with latency_span("audio.websocket_send", segment_id=segment_id):
+            await connection.segment(started, audio, finished)
         websocket_send_ms = int((time.perf_counter() - sent_started) * 1000)
         if self._avatar_service is not None:
             if not self._is_active(context):
                 raise asyncio.CancelledError
-            await self._avatar_service.stream_segment(
-                session_id=context.session_id,
-                utterance_id=context.utterance_id,
-                sequence=segment_id,
-                audio=audio,
-                duration_seconds=duration,
-                sample_rate=getattr(self._tts_provider, "sample_rate", 24000),
-                is_final=False,
-                motion=StreamMotionCuePayload(
-                    gesture=part_text.motion_gesture,
-                emphasized=part_text.emphasis is not SpeechEmphasis.NONE,
-                    emotion=part_text.emotion,
-                    intensity=part_text.emotion_intensity,
-                ),
-            )
+            with latency_span("audio.avatar_send", segment_id=segment_id):
+                await self._avatar_service.stream_segment(
+                    session_id=context.session_id,
+                    utterance_id=context.utterance_id,
+                    sequence=segment_id,
+                    audio=audio,
+                    duration_seconds=duration,
+                    sample_rate=getattr(self._tts_provider, "sample_rate", 24000),
+                    is_final=False,
+                    motion=StreamMotionCuePayload(
+                        gesture=part_text.motion_gesture,
+                    emphasized=part_text.emphasis is not SpeechEmphasis.NONE,
+                        emotion=part_text.emotion,
+                        intensity=part_text.emotion_intensity,
+                    ),
+                )
             if not self._is_active(context):
                 await self._avatar_service.stop(
                     session_id=context.session_id,
@@ -1168,7 +1267,9 @@ class VoiceSessionManager:
                         )
 
             try:
+                latency_mark("tts.semaphore_requested")
                 async with self._tts_semaphore:
+                    latency_mark("tts.semaphore_acquired")
                     await asyncio.wait_for(collect(), timeout=self._tts_timeout)
                 audio = b"".join(chunks)
                 duration = await asyncio.to_thread(
@@ -1446,6 +1547,8 @@ class VoiceSessionManager:
         if worker.done():
             worker.result()
         queued_started = time.perf_counter()
+        if isinstance(job, SpeechSegment):
+            latency_mark("tts.enqueue_requested", segment_id=job.sequence, text_length=len(job.text), queue_depth=queue.qsize())
         put = asyncio.create_task(queue.put(job))
         done, _ = await asyncio.wait({put, worker}, return_when=asyncio.FIRST_COMPLETED)
         if worker in done:
@@ -1455,6 +1558,8 @@ class VoiceSessionManager:
             worker.result()
         await put
         if job is not None:
+            latency_mark("tts.enqueue_completed", duration_ms=(time.perf_counter() - queued_started) * 1000,
+                         segment_id=job.sequence if isinstance(job, SpeechSegment) else 0, queue_depth=queue.qsize())
             job_text = job.text if isinstance(job, SpeechSegment) else str(job)
             logger.info(
                 "Live TTS chunk queued: text_length=%s words=%s queue_depth=%s chunk_queued_ms=%s",
@@ -1529,13 +1634,23 @@ class VoiceSessionManager:
         )
 
     def _publish_latency(self, context: UtteranceContext, event_type: str, **payload: Any) -> None:
+        if context.latency_trace is not None:
+            stage = {
+                "voice.llm_first_delta": "agent.first_delta",
+                "voice.first_speakable_segment": "speech.first_segment",
+                "voice.end_of_speech_to_playback": "playback.started",
+            }.get(event_type, event_type.removeprefix("voice."))
+            context.latency_trace.mark(stage, **payload)
         if self._event_publisher is None:
             return
         self._event_publisher(
             event_type,
             "info",
             "Voice latency milestone",
-            {"session_id": context.session_id, "utterance_id": context.utterance_id, **payload},
+            {"session_id": context.session_id, "utterance_id": context.utterance_id,
+             "generation": context.generation,
+             "trace_id": context.latency_trace.trace_id if context.latency_trace is not None else None,
+             **payload},
         )
 
     @staticmethod

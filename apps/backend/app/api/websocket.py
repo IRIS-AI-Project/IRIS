@@ -124,6 +124,10 @@ async def websocket_voice(websocket: WebSocket, session_id: str, version: int = 
                         "utterance_id": message.get("utterance_id"),
                     },
                 )
+            elif message.get("type") == "playback.owner":
+                manager.set_playback_owner(session_id, message.get("utterance_id"), message.get("owner"), message.get("muted"))
+            elif message.get("type") == "playback.timing":
+                manager.playback_timing(session_id, message.get("utterance_id"), message)
             elif message.get("type") == "playback.segment.started":
                 service = getattr(websocket.app.state, "conversation_service", None)
                 if service is not None:
@@ -143,6 +147,7 @@ async def websocket_voice(websocket: WebSocket, session_id: str, version: int = 
                         message.get("generation"),
                     )
             elif message.get("type") == "playback.finished":
+                manager.playback_finished(session_id, message.get("utterance_id"))
                 service = getattr(websocket.app.state, "conversation_service", None)
                 if service is not None:
                     utterance_id = message.get("utterance_id")

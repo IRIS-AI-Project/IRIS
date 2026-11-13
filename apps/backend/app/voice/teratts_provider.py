@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from apps.backend.app.voice.latency import latency_mark, latency_span
 from apps.backend.app.voice.delivery import MAX_SPEECH_TEMPO, MIN_SPEECH_TEMPO
 from apps.backend.app.voice.providers import (
     AudioChunk,
@@ -372,7 +373,10 @@ class TeraTTSProvider(TTSProvider):
         tempo: float,
         cancelled: threading.Event | None = None,
     ) -> tuple[bytes, str, float]:
+        latency_mark("tts.worker_entered")
+        latency_mark("tts.native_lock_requested")
         with self._model_lock:
+            latency_mark("tts.native_lock_acquired")
             if self._closed or (cancelled is not None and cancelled.is_set()):
                 raise RuntimeError("TTS synthesis cancelled")
             return self._render_unlocked_sync(text, voice, style, tempo, cancelled)
@@ -385,41 +389,45 @@ class TeraTTSProvider(TTSProvider):
             raise RuntimeError("TeraTTS model is not loaded")
         import numpy as np
 
-        normalized = self._prepare_model_text(normalize_for_teratts(text, self._pronunciations))
+        with latency_span("tts.normalize"):
+            normalized = normalize_for_teratts(text, self._pronunciations)
+        with latency_span("tts.accent"):
+            normalized = self._prepare_model_text(normalized)
         duration_scale = self._duration_scale(
             TTSRequest(text=text, language="ru", voice=voice, style=style, tempo=tempo)
         )
-        stream_method = getattr(self._model, "generate_speech_stream", None)
-        if callable(stream_method):
-            chunks = stream_method(
-                normalized,
-                voice=voice,
-                duration_scale=duration_scale,
-                seed=self.seed,
-                chunk_frames=self.chunk_frames,
-            )
-            arrays = []
-            for chunk in chunks:
-                if cancelled is not None and cancelled.is_set():
-                    raise RuntimeError("TTS synthesis cancelled")
-                value = np.asarray(chunk, dtype=np.float32).reshape(-1)
-                if value.size:
-                    arrays.append(value)
-            if not arrays:
-                raise RuntimeError("TeraTTS returned empty audio stream")
-            waveform = np.concatenate(arrays)
-        else:
-            generate = getattr(self._model, "generate_speech", None)
-            if not callable(generate):
-                raise RuntimeError("TeraTTS model does not expose speech generation")
-            waveform = np.asarray(
-                generate(normalized, voice=voice, duration_scale=duration_scale, seed=self.seed),
-                dtype=np.float32,
-            ).reshape(-1)
-        waveform = np.nan_to_num(waveform, nan=0.0, posinf=1.0, neginf=-1.0)
-        if waveform.size == 0:
-            raise RuntimeError("TeraTTS returned empty audio")
-        return waveform_to_wav_bytes(waveform, TERATTS_SAMPLE_RATE), normalized, duration_scale
+        with latency_span("tts.inference"):
+            stream_method = getattr(self._model, "generate_speech_stream", None)
+            if callable(stream_method):
+                chunks = stream_method(
+                    normalized,
+                    voice=voice,
+                    duration_scale=duration_scale,
+                    seed=self.seed,
+                    chunk_frames=self.chunk_frames,
+                )
+                arrays = []
+                for chunk in chunks:
+                    if cancelled is not None and cancelled.is_set():
+                        raise RuntimeError("TTS synthesis cancelled")
+                    value = np.asarray(chunk, dtype=np.float32).reshape(-1)
+                    if value.size:
+                        arrays.append(value)
+                if not arrays:
+                    raise RuntimeError("TeraTTS returned empty audio stream")
+                waveform = np.concatenate(arrays)
+            else:
+                generate = getattr(self._model, "generate_speech", None)
+                if not callable(generate):
+                    raise RuntimeError("TeraTTS model does not expose speech generation")
+                waveform = np.asarray(
+                    generate(normalized, voice=voice, duration_scale=duration_scale, seed=self.seed),
+                    dtype=np.float32,
+                ).reshape(-1)
+            waveform = np.nan_to_num(waveform, nan=0.0, posinf=1.0, neginf=-1.0)
+            if waveform.size == 0:
+                raise RuntimeError("TeraTTS returned empty audio")
+            return waveform_to_wav_bytes(waveform, TERATTS_SAMPLE_RATE), normalized, duration_scale
 
     def _prepare_model_text(self, normalized: str) -> str:
         # Bundled RUAccent removes the typographic ellipsis. ASCII dots survive
@@ -455,10 +463,13 @@ class TeraTTSProvider(TTSProvider):
         if not text:
             raise ValueError("TTS text is empty")
         voice = self.resolve_voice(request.language, request.voice)
-        await self._ensure_model()
+        with latency_span("tts.ensure_model"):
+            await self._ensure_model()
         started = time.perf_counter()
         cancelled = threading.Event()
+        latency_mark("tts.infer_lock_requested")
         async with self._infer_lock:
+            latency_mark("tts.infer_lock_acquired")
             try:
                 wav_bytes, normalized, duration_scale = await asyncio.wait_for(
                     asyncio.to_thread(self._render_sync, text, voice, request.style, request.tempo, cancelled),
@@ -468,17 +479,18 @@ class TeraTTSProvider(TTSProvider):
                 cancelled.set()
         synthesis_ms = int((time.perf_counter() - started) * 1000)
         delivery_started = time.perf_counter()
-        wav_bytes = await asyncio.to_thread(
-            apply_wav_delivery,
-            wav_bytes,
-            tempo=1.0,
-            pause_before_ms=request.pause_before_ms,
-            pause_after_ms=request.pause_after_ms,
-            postprocess=self.audio_postprocessing_enabled,
-            loudness_target_dbfs=self.loudness_target_dbfs,
-            peak_ceiling_dbfs=self.peak_ceiling_dbfs,
-            highpass_cutoff_hz=self.highpass_cutoff_hz,
-        )
+        with latency_span("tts.delivery"):
+            wav_bytes = await asyncio.to_thread(
+                apply_wav_delivery,
+                wav_bytes,
+                tempo=1.0,
+                pause_before_ms=request.pause_before_ms,
+                pause_after_ms=request.pause_after_ms,
+                postprocess=self.audio_postprocessing_enabled,
+                loudness_target_dbfs=self.loudness_target_dbfs,
+                peak_ceiling_dbfs=self.peak_ceiling_dbfs,
+                highpass_cutoff_hz=self.highpass_cutoff_hz,
+            )
         duration = await asyncio.to_thread(wav_duration_seconds, wav_bytes)
         metadata = {
             "provider": self.name,
@@ -499,6 +511,9 @@ class TeraTTSProvider(TTSProvider):
             "rtf": (synthesis_ms / 1000.0) / duration if duration else None,
             "native_stream": True,
         }
+        latency_mark("tts.result", provider=self.name, model=self.model_id, revision=self.revision,
+                     device=self._selected_device, warm=self._warmed_up, threads=self.threads,
+                     audio_bytes=len(wav_bytes), sample_rate=TERATTS_SAMPLE_RATE, synthesis_ms=synthesis_ms)
         return wav_bytes, metadata
 
     async def stream(self, request: TTSRequest):

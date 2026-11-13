@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from apps.backend.app.voice.latency import latency_mark, latency_span
+
 import asyncio
 import contextlib
 import re
@@ -588,6 +590,7 @@ class LiveConversationService:
                     corrected_content or transcript,
                 )
             )
+            latency_mark("conversation.appraisal_route", reason="parallel" if parallel else "awaited")
             if parallel:
                 background_appraisal = adjudication_task
                 model_decision = fallback_decision
@@ -1394,33 +1397,34 @@ class LiveConversationService:
         observation_metadata: dict[str, object],
     ) -> StoredTimelineMessage:
         """Persist the observation records together on an I/O worker thread."""
-        message, _ = self._store.append_message(
-            role=role,
-            content=content,
-            corrected_content=corrected_content,
-            input_mode=input_mode,
-            utterance_id=utterance_id,
-            generation=generation,
-            turn_id=turn_id,
-            language=language,
-            metadata=message_metadata,
-            session_id=session_id,
-        )
-        self._store.save_conversation_observation(
-            message_id=message.id,
-            session_id=session_id,
-            turn_id=turn_id,
-            utterance_id=utterance_id,
-            generation=generation,
-            speaker_role=speaker_role,
-            speaker_confidence=speaker_confidence,
-            addressedness=addressedness,
-            addressed_confidence=addressed_confidence,
-            end_of_turn_confidence=end_of_turn_confidence,
-            significance=significance,
-            metadata=observation_metadata,
-        )
-        return message
+        with latency_span("conversation.persist_input"):
+            message, _ = self._store.append_message(
+                role=role,
+                content=content,
+                corrected_content=corrected_content,
+                input_mode=input_mode,
+                utterance_id=utterance_id,
+                generation=generation,
+                turn_id=turn_id,
+                language=language,
+                metadata=message_metadata,
+                session_id=session_id,
+            )
+            self._store.save_conversation_observation(
+                message_id=message.id,
+                session_id=session_id,
+                turn_id=turn_id,
+                utterance_id=utterance_id,
+                generation=generation,
+                speaker_role=speaker_role,
+                speaker_confidence=speaker_confidence,
+                addressedness=addressedness,
+                addressed_confidence=addressed_confidence,
+                end_of_turn_confidence=end_of_turn_confidence,
+                significance=significance,
+                metadata=observation_metadata,
+            )
+            return message
 
     def _schedule_memory(
         self,
@@ -1430,21 +1434,22 @@ class LiveConversationService:
         stt_uncertain: bool,
         decision_reason: DecisionReason,
     ) -> None:
-        if (
-            self._memory_service is None
-            or speaker_role is not SpeakerRole.PRIMARY
-            or speaker_confidence < 0.7
-            or stt_uncertain
-            or decision_reason in {
-                DecisionReason.AMBIENT_SPEECH,
-                DecisionReason.SELF_TALK,
-                DecisionReason.OTHER_PERSON,
-                DecisionReason.INCOMPLETE_TURN,
-            }
-        ):
-            return
-        if self._memory_service.uses_background_extraction:
-            self._memory_service.extract_high_precision_from_message(message)
+        with latency_span("conversation.schedule_memory"):
+            if (
+                self._memory_service is None
+                or speaker_role is not SpeakerRole.PRIMARY
+                or speaker_confidence < 0.7
+                or stt_uncertain
+                or decision_reason in {
+                    DecisionReason.AMBIENT_SPEECH,
+                    DecisionReason.SELF_TALK,
+                    DecisionReason.OTHER_PERSON,
+                    DecisionReason.INCOMPLETE_TURN,
+                }
+            ):
+                return
+            if self._memory_service.uses_background_extraction:
+                self._memory_service.extract_high_precision_from_message(message)
         # The durable LLM consolidator must be anchored at the terminal Iris
         # reply, not this user message.  See _commit_assistant.
 

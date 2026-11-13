@@ -31,6 +31,7 @@ from apps.backend.app.llm.base import (
 )
 from apps.backend.app.llm.models import canonical_deepseek_model
 from apps.backend.app.llm.telemetry import llm_telemetry
+from apps.backend.app.voice.latency import latency_mark, latency_once, latency_span
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,8 @@ class DeepSeekProvider(LLMProvider):
         temperature: float,
         tools: list[dict] | None = None,
     ) -> LLMResponse:
-        client = self._client
+        with latency_span("llm.client_acquire"):
+            client = self._client
         if client is None:
             raise ValueError("DeepSeek API key is not configured")
 
@@ -260,6 +262,9 @@ class DeepSeekProvider(LLMProvider):
         max_attempts = 1 if profile.purpose == "chat_search_bridge" else _MAX_ATTEMPTS
         for attempt in range(1, max_attempts + 1):
             attempt_started_at = time.perf_counter()
+            latency_mark("llm.request_started", request_id=request_id, purpose=profile.purpose,
+                         model=self._model, attempt=attempt, streaming=False,
+                         tools_count=len(tools or ()), message_count=len(messages), input_chars=input_chars)
             attempt_usage: LLMUsage | None = None
             attempt_finish_reason: str | None = None
             try:
@@ -433,7 +438,8 @@ class DeepSeekProvider(LLMProvider):
                 yield delta
 
     async def _stream(self, messages, *, tools=None) -> AsyncIterator[str]:
-        client = self._client
+        with latency_span("llm.client_acquire"):
+            client = self._client
         if client is None:
             raise ValueError("DeepSeek API key is not configured")
 
@@ -450,10 +456,15 @@ class DeepSeekProvider(LLMProvider):
 
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             attempt_started_at = time.perf_counter()
+            latency_mark("llm.request_started", request_id=request_id, purpose=profile.purpose,
+                         model=self._model, attempt=attempt, streaming=True,
+                         tools_count=len(tools or ()), message_count=len(messages), input_chars=input_chars)
             attempt_usage: LLMUsage | None = None
             attempt_finish_reason: str | None = None
             emitted_this_attempt = False
             pending_content: list[str] = []
+            first_text = True
+            first_tool = True
             call_parts: dict[int, dict] = {}
             try:
                 response = await client.chat.completions.create(
@@ -466,6 +477,7 @@ class DeepSeekProvider(LLMProvider):
                     extra_body={"thinking": {"type": profile.thinking}},
                     **({"tools": tools, "tool_choice": "auto"} if tools else {}),
                 )
+                latency_mark("llm.headers_received", request_id=request_id, purpose=profile.purpose, attempt=attempt)
                 async for chunk in response:
                     model = _optional_string(getattr(chunk, "model", None)) or model
                     # Capture usage before reading choices. Current DeepSeek
@@ -486,6 +498,9 @@ class DeepSeekProvider(LLMProvider):
                         finish_reason = chunk_finish_reason
                     delta = getattr(choice, "delta", None)
                     for part in getattr(delta, "tool_calls", None) or []:
+                        if first_tool:
+                            first_tool = False
+                            latency_mark("llm.first_tool_delta", request_id=request_id, purpose=profile.purpose, attempt=attempt)
                         index = getattr(part, "index", 0)
                         call = call_parts.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
                         call["id"] += getattr(part, "id", None) or ""
@@ -494,19 +509,25 @@ class DeepSeekProvider(LLMProvider):
                             call["function"][field] += getattr(function, field, None) or ""
                     content = getattr(delta, "content", None)
                     if isinstance(content, str) and content:
+                        if first_text:
+                            first_text = False
+                            latency_mark("llm.first_raw_text", request_id=request_id, purpose=profile.purpose, attempt=attempt)
                         if tools:
+                            latency_once("llm.buffering", request_id=request_id, hold_reason="native_tool_decision")
                             # A native call may follow a spoken preamble. Hold
                             # this decision response so it cannot reach TTS first.
                             pending_content.append(content)
                         else:
                             emitted_this_attempt = True
                             assembled.append(content)
+                            latency_once("llm.first_released_text", request_id=request_id, purpose=profile.purpose, attempt=attempt)
                             yield content
                 native_calls = [call_parts[index] for index in sorted(call_parts)]
                 if native_calls or pending_content:
                     content = _skill_command(native_calls, live=True) if native_calls else "".join(pending_content)
                     emitted_this_attempt = True
                     assembled.append(content)
+                    latency_once("llm.first_released_text", request_id=request_id, purpose=profile.purpose, attempt=attempt)
                     yield content
             except (asyncio.CancelledError, GeneratorExit) as exc:
                 self._record_telemetry(
@@ -716,6 +737,12 @@ class DeepSeekProvider(LLMProvider):
         model: str | None = None,
     ) -> None:
         measured = usage or LLMUsage()
+        latency_mark("llm.request_completed", request_id=request_id, purpose=profile.purpose,
+                     model=model or self._model, attempt=attempt, streaming=streaming, reason=status,
+                     duration_ms=(time.perf_counter() - attempt_started_at) * 1000,
+                     prompt_tokens=measured.prompt_tokens, completion_tokens=measured.completion_tokens,
+                     cache_hit_tokens=measured.prompt_cache_hit_tokens, cache_miss_tokens=measured.prompt_cache_miss_tokens,
+                     error_type=error_type)
         try:
             llm_telemetry.record(
                 request_id=request_id,

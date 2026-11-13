@@ -8,7 +8,22 @@ export type TTSStreamPlayerOptions = {
   playbackRate?: number;
   startLeadMs?: number;
   outputDeviceId?: string;
+  onTiming?: (timing: PlaybackTiming) => void;
 };
+
+export type PlaybackTiming = {
+  stage: "decoded" | "scheduled" | "started";
+  segment_id: number;
+  decode_ms?: number;
+  unlock_ms?: number;
+  receive_to_decode_ms?: number;
+  buffer_wait_ms?: number;
+  schedule_lead_ms?: number;
+  base_latency_ms?: number;
+  output_latency_ms?: number;
+};
+
+type DecodedSegment = { buffer: AudioBuffer; text: string; segmentId: number; readyAtMs: number };
 
 export type PlaybackOwner = "unity" | "desktop_ui" | "none";
 
@@ -72,10 +87,10 @@ export class TTSStreamPlayer {
   }
   private scheduledUntil = 0;
   private sources = new Set<AudioBufferSourceNode>();
-  private readyBuffers: Array<{ buffer: AudioBuffer; text: string; segmentId: number }> = [];
+  private readyBuffers: DecodedSegment[] = [];
   private generation = 0;
   private started = false;
-  private decodedBySegment = new Map<number, { buffer: AudioBuffer; text: string; segmentId: number }>();
+  private decodedBySegment = new Map<number, DecodedSegment>();
   private nextDecodedSegment = 0;
   private pendingDecodes = 0;
   private activeUtteranceId: string | null = null;
@@ -89,6 +104,7 @@ export class TTSStreamPlayer {
   private startLeadMs: number;
   private outputDeviceId: string;
   private currentSinkId: string | null = null;
+  private onTiming?: (timing: PlaybackTiming) => void;
 
   constructor(
     private readonly onStarted: (utteranceId?: string | null) => void,
@@ -104,9 +120,11 @@ export class TTSStreamPlayer {
     this.prebufferMs = Math.max(0, options.prebufferMs ?? 0);
     this.startLeadMs = Math.max(0, options.startLeadMs ?? 30);
     this.outputDeviceId = options.outputDeviceId ?? "";
+    this.onTiming = options.onTiming;
   }
 
   updateOptions(options: TTSStreamPlayerOptions): void {
+    if (options.onTiming !== undefined) this.onTiming = options.onTiming;
     this.prebufferSegments = Math.max(1, options.prebufferSegments ?? this.prebufferSegments);
     this.prebufferMs = Math.max(0, options.prebufferMs ?? this.prebufferMs);
     this.startLeadMs = Math.max(0, options.startLeadMs ?? this.startLeadMs);
@@ -171,10 +189,15 @@ export class TTSStreamPlayer {
     const result = (async () => {
       await this.unlock();
       const context = this.context!;
+      const decodeAudioStarted = performance.now();
       const buffer = await context.decodeAudioData(data.slice(0));
-      const decoded = { buffer, text: audio.text ?? "", segmentId };
+      const decoded = { buffer, text: audio.text ?? "", segmentId, readyAtMs: performance.now() };
       if (generation !== this.generation || utteranceId !== this.activeUtteranceId) return;
       this.onDecoded(segmentId, Math.round(performance.now() - decodeStarted));
+      this.reportTiming({ stage: "decoded", segment_id: segmentId,
+        unlock_ms: decodeAudioStarted - decodeStarted,
+        decode_ms: decoded.readyAtMs - decodeAudioStarted,
+        receive_to_decode_ms: decoded.readyAtMs - decodeStarted });
       this.decodedBySegment.set(segmentId, decoded);
       this.flushDecodedInOrder();
     })();
@@ -284,7 +307,13 @@ export class TTSStreamPlayer {
     this.maybeFinished();
   }
 
-  private scheduleBuffer(item: { buffer: AudioBuffer; text: string; segmentId: number }): void {
+  private reportTiming(timing: PlaybackTiming): void {
+    if (timing.segment_id !== 0) return;
+    // Timing collectors must never change audio scheduling or error handling.
+    try { this.onTiming?.(timing); } catch { /* optional diagnostics */ }
+  }
+
+  private scheduleBuffer(item: DecodedSegment): void {
     const { buffer, text, segmentId } = item;
     const context = this.context!;
     const gapMs = this.started ? Math.max(0, (context.currentTime - this.scheduledUntil) * 1000) : 0;
@@ -320,6 +349,11 @@ export class TTSStreamPlayer {
     };
     source.start(startAt);
     const segmentStartDelay = Math.max(0, (startAt - context.currentTime) * 1000);
+    this.reportTiming({ stage: "scheduled", segment_id: segmentId,
+      buffer_wait_ms: Math.max(0, performance.now() - item.readyAtMs),
+      schedule_lead_ms: segmentStartDelay,
+      base_latency_ms: Number.isFinite(context.baseLatency) ? context.baseLatency * 1000 : undefined,
+      output_latency_ms: Number.isFinite(context.outputLatency) ? context.outputLatency * 1000 : undefined });
     globalThis.setTimeout(() => {
       if (this.generation === gen && this.activeUtteranceId === utterance) {
         this.onSegmentStarted(text, buffer.duration, segmentId);
@@ -330,6 +364,7 @@ export class TTSStreamPlayer {
       const startedUtteranceId = utterance;
       globalThis.setTimeout(() => {
         if (this.generation === gen && this.activeUtteranceId === utterance) {
+          this.reportTiming({ stage: "started", segment_id: segmentId });
           this.onStarted(startedUtteranceId);
         }
       }, Math.max(0, (startAt - context.currentTime) * 1000));

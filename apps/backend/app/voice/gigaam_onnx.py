@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from apps.backend.app.voice.audio import Pcm16Audio, decode_audio_file
+from apps.backend.app.voice.latency import latency_mark, latency_span
 from apps.backend.app.voice.providers import GigaAMSTTProvider, STTProvider, STTResult
 
 logger = logging.getLogger(__name__)
@@ -168,8 +169,12 @@ class GigaAMOnnxSTTProvider(STTProvider):
         await asyncio.to_thread(self._preload_sync)
 
     def _transcribe_sync(self, audio: Pcm16Audio, language: str, started: float, split: bool = True) -> STTResult:
+        latency_mark("stt.worker_entered")
+        latency_mark("stt.lock_requested")
         with self._lock:
-            text = self._infer(audio, split)
+            latency_mark("stt.lock_acquired")
+            with latency_span("stt.inference"):
+                text = self._infer(audio, split)
         return STTResult(text=text, language="ru" if language == "auto" else language,
                          duration_ms=int((time.perf_counter() - started) * 1000),
                          provider="gigaam_onnx", model="v3_rnnt")

@@ -68,6 +68,7 @@ from apps.backend.app.semantic.chroma_index import ChromaVectorIndex
 from apps.backend.app.semantic.sync_worker import SemanticSyncWorker
 from apps.backend.app.semantic.vector_index import NullVectorIndex, SqliteVecIndex
 from apps.backend.app.voice.service import VoiceService
+from apps.backend.app.voice.latency import VoiceLatencyJournal, latency_mark, latency_span
 from apps.backend.app.voice.audio import Pcm16Audio
 from apps.backend.app.voice.live import VoiceSessionManager
 from apps.backend.app.voice.input import SileroVadProvider, VadProvider, VoiceInputSessionManager
@@ -212,6 +213,11 @@ def create_app() -> FastAPI:
     )
     runtime_settings_store = RuntimeSettingsStore(settings.app_data_path / "settings.json")
     runtime_settings = runtime_settings_store.load(runtime_defaults)
+    voice_latency_journal = VoiceLatencyJournal(
+        settings.app_data_path / "logs" / "voice-latency.jsonl" if settings.voice_latency_persist else None,
+        enabled=settings.voice_latency_diagnostics_enabled,
+        persist_allowed=lambda: not runtime_settings.memory_incognito,
+    )
     conversation_usage = ConversationUsageTracker(timeline_store, paused=runtime_settings.memory_incognito) if timeline_store is not None else None
 
     def record_conversation_activity(event_id: str) -> None:
@@ -623,13 +629,22 @@ def create_app() -> FastAPI:
         connection,
     ) -> None:
         stt_started = time.perf_counter()
+        latency_mark("runtime.profile", app_version=APP_VERSION,
+                     launch_kind="desktop" if settings.desktop_auth_token else "development",
+                     model=settings.deepseek_model, tts_threads=settings.voice_teratts_threads,
+                     stt_process_while_speaking=settings.voice_stt_process_while_speaking,
+                     parallel_appraisal=settings.voice_live_parallel_appraisal,
+                     first_segment_chars=settings.voice_live_first_segment_chars,
+                     first_idle_flush_ms=settings.voice_live_first_idle_flush_ms)
         # The VAD has already confirmed human speech. Only now do we leave the
         # attentive listening pose: processing an unconfirmed audio frame would
         # make the avatar twitch on room noise.
-        await avatar_service.set_presence(session_id=session_id, state="thinking")
+        with latency_span("avatar.thinking_dispatch"):
+            await avatar_service.set_presence(session_id=session_id, state="thinking")
         if conversation_service is not None:
             await conversation_service.phase(session_id, ConversationPhase.TRANSCRIBING, connection.send)
-        stt_result = await voice_service.transcribe_pcm16(audio, language, live_stt=connection.live_stt)
+        with latency_span("stt.final"):
+            stt_result = await voice_service.transcribe_pcm16(audio, language, live_stt=connection.live_stt)
         event_bus.publish(
             "voice.stt_completed",
             "info",
@@ -646,8 +661,19 @@ def create_app() -> FastAPI:
                 "fallback": stt_result.fallback,
             },
         )
+        metadata = getattr(getattr(voice_service, "stt_provider", None), "metadata", {})
+        metadata = metadata if isinstance(metadata, dict) else {}
+        latency_mark("stt.result", provider=stt_result.provider, model=stt_result.model,
+                     device=metadata.get("device"), revision=metadata.get("revision"),
+                     warm=metadata.get("warmed_up"), fallback=stt_result.fallback,
+                     reason=metadata.get("fallback_reason"),
+                     stt_threads=(settings.voice_stt_onnx_threads if metadata.get("device") == "cuda"
+                                  else settings.voice_stt_onnx_cpu_threads) if stt_result.provider == "gigaam_onnx" else None,
+                     precomputed_chunks=getattr(connection.live_stt, "reused_chunks", 0))
         transcript = stt_result.text.strip()
         if not transcript:
+            if connection.latency_trace is not None:
+                connection.latency_trace.finish("empty")
             if conversation_service is not None:
                 await connection.send({
                     "type": "conversation.noise_ignored",
@@ -663,7 +689,11 @@ def create_app() -> FastAPI:
                 await connection.send({"type": "voice.input.error", "message": "Could not transcribe speech"})
             await avatar_service.set_presence(session_id=session_id, state="listening")
             return
-        if not await voice_session_manager.wait_for_connection(session_id, timeout=2.0):
+        with latency_span("output.connection_wait"):
+            output_connected = await voice_session_manager.wait_for_connection(session_id, timeout=2.0)
+        if not output_connected:
+            if connection.latency_trace is not None:
+                connection.latency_trace.finish("disconnected")
             await connection.send({
                 "type": "voice.input.error",
                 "message": "Голосовой канал восстанавливается. Повторите фразу через несколько секунд.",
@@ -692,30 +722,34 @@ def create_app() -> FastAPI:
         )
         if conversation_service is not None:
             decision_started = time.perf_counter()
-            result = await conversation_service.ingest_observation(
-                session_id=session_id,
-                transcript=stt_result.raw_text or stt_result.text,
-                corrected_content=(
-                    stt_result.text
-                    if (stt_result.raw_text or stt_result.text) != stt_result.text
-                    else None
-                ),
-                transcript_corrections=stt_result.corrections,
-                language=stt_result.language,
-                send=connection.send,
-                expected_generation=connection.generation,
-                speaker_role=(
-                    SpeakerRole.UNKNOWN
-                    if runtime_settings.live_conversation_participant_mode == "group"
-                    else SpeakerRole.PRIMARY
-                ),
-                speaker_confidence=(
-                    0.55
-                    if runtime_settings.live_conversation_participant_mode == "group"
-                    else 0.9
-                ),
-                stt_uncertain=stt_uncertain,
-            )
+            with latency_span("conversation.decision"):
+                result = await conversation_service.ingest_observation(
+                    session_id=session_id,
+                    transcript=stt_result.raw_text or stt_result.text,
+                    corrected_content=(
+                        stt_result.text
+                        if (stt_result.raw_text or stt_result.text) != stt_result.text
+                        else None
+                    ),
+                    transcript_corrections=stt_result.corrections,
+                    language=stt_result.language,
+                    send=connection.send,
+                    expected_generation=connection.generation,
+                    speaker_role=(
+                        SpeakerRole.UNKNOWN
+                        if runtime_settings.live_conversation_participant_mode == "group"
+                        else SpeakerRole.PRIMARY
+                    ),
+                    speaker_confidence=(
+                        0.55
+                        if runtime_settings.live_conversation_participant_mode == "group"
+                        else 0.9
+                    ),
+                    stt_uncertain=stt_uncertain,
+                )
+            if connection.latency_trace is not None:
+                connection.latency_trace.bind(result.utterance_id)
+            latency_mark("conversation.decision_ready", action=result.decision.action.value, reason=result.decision.reason.value)
             event_bus.publish(
                 "voice.decision_completed",
                 "info",
@@ -733,6 +767,8 @@ def create_app() -> FastAPI:
             )
             session = await conversation_service.ensure_session(session_id)
             if result.generation != session.generation:
+                if connection.latency_trace is not None:
+                    connection.latency_trace.finish("superseded")
                 return
             await connection.send({
                 "type": "voice.input.transcript",
@@ -756,6 +792,8 @@ def create_app() -> FastAPI:
                 ConversationAction.BACKCHANNEL,
                 ConversationAction.RESPOND,
             }:
+                if connection.latency_trace is not None:
+                    connection.latency_trace.finish("observed")
                 await avatar_service.set_presence(session_id=session_id, state="listening")
                 return
             utterance_id = result.utterance_id
@@ -843,6 +881,7 @@ def create_app() -> FastAPI:
 
     voice_input_session_manager = VoiceInputSessionManager(
         voice_service, process_pcm_utterance, pcm_speech_started,
+        latency_journal=voice_latency_journal,
         vad=vad_provider,
         silero_start_threshold=settings.voice_silero_vad_start_threshold,
         silero_end_threshold=settings.voice_silero_vad_end_threshold,
@@ -1483,6 +1522,7 @@ def create_app() -> FastAPI:
         if voice_service_close is not None:
             await voice_service_close()
         await close_shared_clients()
+        await voice_latency_journal.close()
         await asyncio.to_thread(model_manager.close)
 
     @asynccontextmanager
@@ -1544,6 +1584,7 @@ def create_app() -> FastAPI:
     app.state.situational_coordinator = situational_coordinator
     app.state.model_manager = model_manager
     app.state.backup_service = backup_service
+    app.state.voice_latency_journal = voice_latency_journal
     app.state.voice_service = voice_service
     app.state.voice_session_manager = voice_session_manager
     app.state.voice_input_session_manager = voice_input_session_manager

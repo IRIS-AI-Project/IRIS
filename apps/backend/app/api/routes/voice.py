@@ -1,10 +1,16 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 
 from apps.backend.app.api.routes.conversation import require_active_session_async
 from apps.backend.app.schemas.voice import VoiceInterruptRequest, VoiceTTSStatusResponse
 
 router = APIRouter()
+
+
+@router.get("/debug/voice/latency")
+def voice_latency(request: Request, limit: int = Query(default=30, ge=1, le=120)):
+    """Numeric timing only; subject to the desktop core's normal authentication."""
+    return request.app.state.voice_latency_journal.snapshot(limit)
 
 
 @router.post("/voice/preview")

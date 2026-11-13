@@ -1729,6 +1729,9 @@ export function ChatPage({
           playbackRate: 1,
           startLeadMs: settings?.voice_live_playback_start_lead_ms ?? 30,
           outputDeviceId: selectedOutputDeviceId,
+          onTiming: (timing) => {
+            liveSocketRef.current?.send("playback.timing", { ...timing });
+          },
         },
         (gapMs) => {
           liveSocketRef.current?.send("playback.underrun", { underrun_ms: gapMs });
@@ -1795,6 +1798,11 @@ export function ChatPage({
             event.utterance_id,
           );
           liveSocketRef.current?.activate(event.utterance_id);
+          liveSocketRef.current?.send("playback.owner", {
+            utterance_id: event.utterance_id,
+            owner: avatarOwnsAudioRef.current ? "unity" : "desktop_ui",
+            muted: soundMutedRef.current,
+          });
           livePlayerRef.current?.begin(event.utterance_id);
           setVoiceState("thinking");
         } else if (event.type === "voice.metadata") {

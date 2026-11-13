@@ -15,6 +15,8 @@ from typing import Awaitable, Callable
 
 from fastapi import WebSocket
 
+from apps.backend.app.voice.latency import VoiceLatencyTrace, latency_mark, latency_span, voice_trace_scope
+
 from apps.backend.app.voice.audio import (
     CANONICAL_FORMAT,
     CANONICAL_SAMPLE_RATE,
@@ -334,6 +336,7 @@ class InputConnection:
     # Captured at the candidate endpoint for end-to-end latency diagnostics.
     pipeline_started_at: float = 0.0
     live_stt: object | None = None
+    latency_trace: VoiceLatencyTrace | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     lease: _InputConnectionLease = field(default_factory=_InputConnectionLease)
 
@@ -382,6 +385,11 @@ class InputSession:
     endpoint_tasks: set[asyncio.Task] = field(default_factory=set)
     closed: bool = False
     live_stt: object | None = None
+    sample_position: int = 0
+    input_processing_ms: float = 0.0
+    input_max_frame_ms: float = 0.0
+    input_max_gap_ms: float = 0.0
+    last_frame_at: float = 0.0
 
 
 UtteranceHandler = Callable[[str, Pcm16Audio, str, InputConnection], Awaitable[None]]
@@ -416,6 +424,7 @@ class VoiceInputSessionManager:
         barge_in_confirmation_ms: int = 180,
         turn_detector=None,
         event_publisher=None,
+        latency_journal=None,
     ) -> None:
         self._voice_service = voice_service
         self._on_utterance = on_utterance
@@ -442,6 +451,7 @@ class VoiceInputSessionManager:
         self._barge_in_confirmation_ms = max(0, barge_in_confirmation_ms)
         self._turn_detector = turn_detector
         self._event_publisher = event_publisher or (lambda *_: None)
+        self._latency_journal = latency_journal
         self._sessions: dict[str, InputSession] = {}
 
     @property
@@ -631,6 +641,9 @@ class VoiceInputSessionManager:
                 else self._live_fallback_end_silence_ms
             ),
         )
+        session.sample_position = 0
+        session.input_processing_ms = session.input_max_frame_ms = session.input_max_gap_ms = 0.0
+        session.last_frame_at = 0.0
         session.ring.clear()
         session.ring_bytes = 0
         session.utterance = None
@@ -708,7 +721,17 @@ class VoiceInputSessionManager:
             await session.connection.send({"type": "voice.input.error", "message": str(exc)})
             return
         if normalized:
-            await self._feed_canonical(session, normalized)
+            received_at = time.perf_counter()
+            if session.last_frame_at:
+                session.input_max_gap_ms = max(session.input_max_gap_ms, (received_at - session.last_frame_at) * 1000)
+            session.last_frame_at = received_at
+            session.sample_position += len(normalized) // 2
+            try:
+                await self._feed_canonical(session, normalized)
+            finally:
+                elapsed_ms = (time.perf_counter() - received_at) * 1000
+                session.input_processing_ms += elapsed_ms
+                session.input_max_frame_ms = max(session.input_max_frame_ms, elapsed_ms)
 
     async def _feed_canonical(self, session: InputSession, pcm16: bytes) -> None:
         self._append_ring(session, pcm16)
@@ -906,6 +929,7 @@ class VoiceInputSessionManager:
                 candidate_id,
                 time.monotonic(),
                 endpoint_silence_ms,
+                pipeline_started_at=time.perf_counter() - endpoint_silence_ms / 1000,
             ),
             name=f"voice-input-{session.session_id}-{session.connection.generation}",
         )
@@ -972,6 +996,7 @@ class VoiceInputSessionManager:
         candidate_id: int,
         boundary_at: float,
         endpoint_silence_ms: float,
+        pipeline_started_at: float | None = None,
     ) -> None:
         close_candidate = False
         connection = InputConnection(
@@ -980,76 +1005,99 @@ class VoiceInputSessionManager:
             generation=generation,
             replaced_owner=session.connection.replaced_owner,
             # The candidate is emitted only after VAD has accumulated silence.
-            # Backdate the stopwatch to the last audible speech frame so every
-            # downstream milestone measures the metric users actually feel:
-            # end-of-speech -> first audible assistant audio.
-            pipeline_started_at=time.perf_counter() - endpoint_silence_ms / 1000,
+            # Estimate the last speech frame from VAD silence at candidate
+            # creation, including dispatch delay. Capture/hardware latency is
+            # unknown; this is explicitly a server-side estimate.
+            pipeline_started_at=(pipeline_started_at if pipeline_started_at is not None
+                                 else time.perf_counter() - endpoint_silence_ms / 1000),
             live_stt=session.live_stt,
             lock=session.connection.lock,
             lease=session.connection.lease,
         )
-        try:
-            if self._turn_detector is not None:
-                await connection.send({
-                    "type": "conversation.turn_candidate",
-                    "generation": generation,
-                })
-                detection = await self._turn_detector.analyze(pcm16, session.sample_rate)
-                if not self._candidate_is_current(session, generation, candidate_id):
-                    return
-                await connection.send({
-                    "type": "conversation.turn_completed" if detection.complete else "conversation.phase",
-                    "generation": generation,
-                    "complete": detection.complete,
-                    "confidence": detection.confidence,
-                    "provider": detection.provider,
-                    "latency_ms": round(detection.latency_ms, 2),
-                    "fallback": detection.fallback,
-                    "phase": "transcribing" if detection.complete else "endpoint_pending",
-                })
-                self._event_publisher(
-                    "voice.endpoint_detected",
-                    "info",
-                    "Voice endpoint detected",
-                    {
-                        "session_id": session.session_id,
+        connection.latency_trace = self._latency_journal.start_trace(
+            session_id=session.session_id, generation=generation, candidate_id=candidate_id,
+            started_at=connection.pipeline_started_at,
+        ) if self._latency_journal is not None else None
+        with voice_trace_scope(connection.latency_trace):
+            latency_mark("input.endpoint_candidate", origin="server_vad_estimate",
+                         endpoint_silence_ms=endpoint_silence_ms, audio_ms=len(pcm16) / 32,
+                         sample_rate=session.sample_rate, sample_position=session.sample_position,
+                         source_sample_rate=session.source_sample_rate, capture_profile=session.capture_profile,
+                         vad_provider=getattr(session.vad_stream, "name", "unknown"),
+                         input_processing_ms=session.input_processing_ms,
+                         input_max_frame_ms=session.input_max_frame_ms, input_max_gap_ms=session.input_max_gap_ms)
+            try:
+                if self._turn_detector is not None:
+                    await connection.send({
+                        "type": "conversation.turn_candidate",
                         "generation": generation,
-                        "endpoint_silence_ms": round(endpoint_silence_ms, 2),
-                        "turn_detection_ms": round(detection.latency_ms, 2),
-                        "pipeline_elapsed_ms": round(
-                            (time.perf_counter() - connection.pipeline_started_at) * 1000,
-                            2,
-                        ),
-                        "provider": detection.provider,
+                    })
+                    with latency_span("endpoint.smart_turn"):
+                        detection = await self._turn_detector.analyze(pcm16, session.sample_rate)
+                    if not self._candidate_is_current(session, generation, candidate_id):
+                        if connection.latency_trace is not None:
+                            connection.latency_trace.finish("superseded")
+                        return
+                    await connection.send({
+                        "type": "conversation.turn_completed" if detection.complete else "conversation.phase",
+                        "generation": generation,
                         "complete": detection.complete,
+                        "confidence": detection.confidence,
+                        "provider": detection.provider,
+                        "latency_ms": round(detection.latency_ms, 2),
                         "fallback": detection.fallback,
-                    },
-                )
-                if not detection.complete:
-                    self._schedule_forced_endpoint(
-                        session,
-                        connection,
-                        pcm16,
-                        generation,
-                        candidate_id,
-                        boundary_at,
+                        "phase": "transcribing" if detection.complete else "endpoint_pending",
+                    })
+                    self._event_publisher(
+                        "voice.endpoint_detected",
+                        "info",
+                        "Voice endpoint detected",
+                        {
+                            "session_id": session.session_id,
+                            "generation": generation,
+                            "endpoint_silence_ms": round(endpoint_silence_ms, 2),
+                            "turn_detection_ms": round(detection.latency_ms, 2),
+                            "pipeline_elapsed_ms": round(
+                                (time.perf_counter() - connection.pipeline_started_at) * 1000,
+                                2,
+                            ),
+                            "provider": detection.provider,
+                            "complete": detection.complete,
+                            "fallback": detection.fallback,
+                        },
                     )
-                    return
-            close_candidate = True
-            with contextlib.suppress(Exception):
-                await connection.send({"type": "voice.input.finalizing", "generation": generation})
-            await self._deliver_utterance(session, pcm16, connection)
-        except Exception as exc:
-            with contextlib.suppress(Exception):
-                await connection.send({"type": "voice.input.error", "message": str(exc)})
-        finally:
-            if close_candidate and self._candidate_is_current(session, generation, candidate_id):
-                session.pending_turn.clear()
-                session.pending_candidate_id = None
-                if session.live_stt is not None:
-                    await session.live_stt.close()
-                    session.live_stt = None
-            session.finalizing = False
+                    latency_mark("endpoint.result", provider=detection.provider, complete=detection.complete, fallback=detection.fallback)
+                    if not detection.complete:
+                        self._schedule_forced_endpoint(
+                            session,
+                            connection,
+                            pcm16,
+                            generation,
+                            candidate_id,
+                            boundary_at,
+                        )
+                        return
+                close_candidate = True
+                with contextlib.suppress(Exception):
+                    await connection.send({"type": "voice.input.finalizing", "generation": generation})
+                await self._deliver_utterance(session, pcm16, connection)
+            except asyncio.CancelledError:
+                if connection.latency_trace is not None:
+                    connection.latency_trace.finish("cancelled")
+                raise
+            except Exception as exc:
+                if connection.latency_trace is not None:
+                    connection.latency_trace.finish("error", error_type=type(exc).__name__)
+                with contextlib.suppress(Exception):
+                    await connection.send({"type": "voice.input.error", "message": str(exc)})
+            finally:
+                if close_candidate and self._candidate_is_current(session, generation, candidate_id):
+                    session.pending_turn.clear()
+                    session.pending_candidate_id = None
+                    if session.live_stt is not None:
+                        await session.live_stt.close()
+                        session.live_stt = None
+                session.finalizing = False
 
     def _candidate_is_current(
         self,
@@ -1075,6 +1123,8 @@ class VoiceInputSessionManager:
         boundary_at: float,
     ) -> None:
         if not self._candidate_is_current(session, generation, candidate_id):
+            if connection.latency_trace is not None:
+                connection.latency_trace.finish("superseded")
             return
         if session.endpoint_task is not None:
             session.endpoint_task.cancel()
@@ -1091,6 +1141,9 @@ class VoiceInputSessionManager:
             ),
             name=f"voice-endpoint-{session.session_id}-{generation}",
         )
+        if connection.latency_trace is not None:
+            trace = connection.latency_trace
+            task.add_done_callback(lambda completed: trace.finish("cancelled") if completed.cancelled() else None)
         session.endpoint_task = task
         session.endpoint_tasks.add(task)
         task.add_done_callback(
@@ -1106,8 +1159,11 @@ class VoiceInputSessionManager:
         candidate_id: int,
         delay: float,
     ) -> None:
-        await asyncio.sleep(delay)
+        with latency_span("endpoint.forced_wait"):
+            await asyncio.sleep(delay)
         if not self._candidate_is_current(session, generation, candidate_id):
+            if connection.latency_trace is not None:
+                connection.latency_trace.finish("superseded")
             return
         await connection.send({
             "type": "conversation.turn_completed",
@@ -1123,6 +1179,8 @@ class VoiceInputSessionManager:
             await connection.send({"type": "voice.input.finalizing", "generation": generation})
             await self._deliver_utterance(session, pcm16, connection)
         except Exception as exc:
+            if connection.latency_trace is not None:
+                connection.latency_trace.finish("error", error_type=type(exc).__name__)
             with contextlib.suppress(Exception):
                 await connection.send({"type": "voice.input.error", "message": str(exc)})
         finally:

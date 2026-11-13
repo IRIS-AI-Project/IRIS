@@ -13,6 +13,8 @@ from contextlib import aclosing, nullcontext
 from uuid import uuid4
 from typing import TYPE_CHECKING, Any, Callable
 
+from apps.backend.app.voice.latency import latency_mark, latency_once, latency_span, latency_first_delta
+
 from apps.backend.app.agents.character.prompts import (
     CHARACTER_REPAIR_PROMPT,
     AVATAR_CONTROL_RULES,
@@ -236,17 +238,18 @@ class CharacterAgent:
                 pass
 
     def _opinion_context(self, text, context, *, live):
-        self._opinion_context_chars = 0
-        if self._opinion_store is None:
-            return ""
-        try:
-            cue = self._opinion_store.prompt(text, context, live=live,
-                incognito=self._opinion_writes_paused())
-            self._opinion_context_chars = len(cue)
-            return cue
-        except (OSError, ValueError, sqlite3.Error):
-            logger.warning("Could not read Iris viewpoints")
-            return "Твои сохранённые взгляды сейчас недоступны. Не выдумывай, что всегда придерживалась новой позиции."
+        with latency_span("agent.opinion_context"):
+            self._opinion_context_chars = 0
+            if self._opinion_store is None:
+                return ""
+            try:
+                cue = self._opinion_store.prompt(text, context, live=live,
+                    incognito=self._opinion_writes_paused())
+                self._opinion_context_chars = len(cue)
+                return cue
+            except (OSError, ValueError, sqlite3.Error):
+                logger.warning("Could not read Iris viewpoints")
+                return "Твои сохранённые взгляды сейчас недоступны. Не выдумывай, что всегда придерживалась новой позиции."
 
     def _opinion_writes_paused(self):
         return (getattr(self._runtime_settings, "memory_incognito", False)
@@ -399,15 +402,16 @@ class CharacterAgent:
             self._memory_service.prepare_clarification_from_message(
                 self._last_user_message,
             )
-        built_context = (
-            self._context_manager.build(
-                effective_text,
-                session_id=session_id,
-                current_message_id=getattr(self._last_user_message, "id", None),
+        with latency_span("context.build"):
+            built_context = (
+                self._context_manager.build(
+                    effective_text,
+                    session_id=session_id,
+                    current_message_id=getattr(self._last_user_message, "id", None),
+                )
+                if self._context_manager
+                else None
             )
-            if self._context_manager
-            else None
-        )
         self._document_prompt = ""
         self.last_document_context = None
         if self._document_service is not None:
@@ -502,35 +506,36 @@ class CharacterAgent:
         return "\n\n".join(parts)[:1600]
 
     async def _resolve_turn_context(self, user_text, request, *, live):
-        if request is None:
-            result = await self._resolve_situational_context(user_text)
-            if self._web_reference_context:
-                result = (result or "") + "\n" + self._web_reference_context
+        with latency_span("agent.lookup"):
+            if request is None:
+                result = await self._resolve_situational_context(user_text)
+                if self._web_reference_context:
+                    result = (result or "") + "\n" + self._web_reference_context
+                if self._turn_news_sources:
+                    result = (result or "") + "\n" + reference_context(self._turn_news_sources)
+                    if not self._web_search_enabled():
+                        result += "\nНового обращения к интернету нет. Ответь лишь по имеющимся данным; недостающую деталь не угадывай."
+                if self._query_clarification:
+                    return (result or "") + "\nЗапрос поиска не удалось однозначно восстановить. Поиск не запускался: задай один короткий вопрос о предмете поиска. Не говори о недоступности инструмента и не обещай поиск."
+                return result
+            # Ambient/news work runs alongside the single bounded search. It cannot
+            # initiate a second news fallback while this search is in progress.
+            ambient_task = asyncio.create_task(
+                self._resolve_situational_context(user_text, allow_search=False)
+            )
+            try:
+                snapshot = await self._perform_web_search(request)
+            finally:
+                # Optional location/weather must not delay the completed lookup.
+                # Cached ambient data normally finishes before the search; cancel
+                # a cold or unavailable service instead of holding the answer.
+                if not ambient_task.done():
+                    ambient_task.cancel()
+                await asyncio.gather(ambient_task, return_exceptions=True)
+            ambient = self._turn_ambient[:160]
             if self._turn_news_sources:
-                result = (result or "") + "\n" + reference_context(self._turn_news_sources)
-                if not self._web_search_enabled():
-                    result += "\nНового обращения к интернету нет. Ответь лишь по имеющимся данным; недостающую деталь не угадывай."
-            if self._query_clarification:
-                return (result or "") + "\nЗапрос поиска не удалось однозначно восстановить. Поиск не запускался: задай один короткий вопрос о предмете поиска. Не говори о недоступности инструмента и не обещай поиск."
-            return result
-        # Ambient/news work runs alongside the single bounded search. It cannot
-        # initiate a second news fallback while this search is in progress.
-        ambient_task = asyncio.create_task(
-            self._resolve_situational_context(user_text, allow_search=False)
-        )
-        try:
-            snapshot = await self._perform_web_search(request)
-        finally:
-            # Optional location/weather must not delay the completed lookup.
-            # Cached ambient data normally finishes before the search; cancel
-            # a cold or unavailable service instead of holding the answer.
-            if not ambient_task.done():
-                ambient_task.cancel()
-            await asyncio.gather(ambient_task, return_exceptions=True)
-        ambient = self._turn_ambient[:160]
-        if self._turn_news_sources:
-            ambient += "\nЭто короткое уточнение к уже рассказанной новости: назови искомую деталь без повторной сводки. Не добавляй оценку обычности, опасности или последствий события без подтверждения в статье."
-        return ambient + "\n" + self._web_search_followup(snapshot, live=live, max_chars=3199 - len(ambient))
+                ambient += "\nЭто короткое уточнение к уже рассказанной новости: назови искомую деталь без повторной сводки. Не добавляй оценку обычности, опасности или последствий события без подтверждения в статье."
+            return ambient + "\n" + self._web_search_followup(snapshot, live=live, max_chars=3199 - len(ambient))
 
     def _planned_search(self, user_text, context):
         if not self._web_search_enabled() or getattr(self._situational_coordinator, "search_service", None) is None:
@@ -1282,6 +1287,7 @@ class CharacterAgent:
                         self._search_acknowledged = True
                         self._search_bridge_spoken = prefix
                         # An existing voice directive flushes a hanging clause before lookup completes.
+                        latency_mark("lookup.acknowledgement")
                         yield prefix + " [[voice pause_before=short]]", None
             yield "", await task
         finally:
@@ -1969,6 +1975,7 @@ class CharacterAgent:
 
     async def _truthful_search_stream(self, stream):
         buffered = ""
+        latency_once("agent.guard_hold", hold_reason="search_truthfulness")
         if search_process_question(self._search_user_text):
             async for delta in stream:
                 buffered += delta
@@ -2169,15 +2176,16 @@ class CharacterAgent:
         voice_corrections: tuple[dict[str, object], ...] = (),
     ) -> AsyncIterator[str]:
         """Stream plain reply text and commit history only after clean completion."""
-        interpreted, effective_text, built_context = await asyncio.to_thread(
-            self._prepare_turn,
-            session_id,
-            user_text,
-            input_mode,
-            source_message=source_message,
-            raw_user_text=raw_user_text,
-            voice_corrections=voice_corrections,
-        )
+        with latency_span("agent.prepare_turn"):
+            interpreted, effective_text, built_context = await asyncio.to_thread(
+                self._prepare_turn,
+                session_id,
+                user_text,
+                input_mode,
+                source_message=source_message,
+                raw_user_text=raw_user_text,
+                voice_corrections=voice_corrections,
+            )
         prompt_user_text = (
             built_context.effective_user_text
             if built_context is not None and built_context.effective_user_text
@@ -2224,7 +2232,8 @@ class CharacterAgent:
         self._task_reasoning = bool(turn_frame.relation and len(re.findall(r"\w+", prompt_user_text)) <= 2)
         self._streaming_turn = True
         self._bridge_state = state_context or ""
-        planned_search = await self._plan_turn_search(session_id, prompt_user_text, context)
+        with latency_span("agent.search_plan"):
+            planned_search = await self._plan_turn_search(session_id, prompt_user_text, context)
         search_acknowledgement = ""
         async with aclosing(self._wait_for_lookup(
             self._resolve_turn_context(prompt_user_text, planned_search, live=True),
@@ -2318,6 +2327,8 @@ class CharacterAgent:
         chunks: list[str] = [search_acknowledgement] if search_acknowledgement else []
         from apps.backend.app.reminders import explicit_reminder, failed_reminder_reply
         hold_reminder = explicit_reminder(self._reminder_user_text)
+        if hold_reminder:
+            latency_once("agent.guard_hold", hold_reason="reminder")
         hold_opinion = False
         route_buffer = ""
         route_checked = not model_routing_candidate
@@ -2332,8 +2343,11 @@ class CharacterAgent:
             "guard_diagnostics": built_context.diagnostics if built_context is not None else None,
         }
         # Control commands remain hidden even when this turn forbids lookup.
-        visible_stream = self._live_stream_with_optional_search(messages, guard_options)
-        async for delta in self._truthful_search_stream(visible_stream):
+        latency_mark("agent.prompt_ready", message_count=len(messages), input_chars=sum(len(m.content) for m in messages))
+        visible_stream = latency_first_delta(
+            self._live_stream_with_optional_search(messages, guard_options), "agent.guard_released",
+        )
+        async for delta in latency_first_delta(self._truthful_search_stream(visible_stream), "agent.truthfulness_released"):
             hold_opinion = hold_opinion or self._opinion_proposed
             if not delta:
                 continue
@@ -2975,6 +2989,7 @@ class CharacterAgent:
             # original first-sentence latency and delta cadence.
             sentence_count = len(re.findall(r"[.!?…](?:\s|$)", opening))
             if sentence_count == 0 and len(opening) < 220:
+                latency_once("agent.guard_hold", hold_reason="first_sentence")
                 continue
             suspicious_opener = bool(re.search(r"(?:^|\n)\s*(?:ну|а)\?\s*(?:я\s+здесь)?", opening.lower()))
             # Only a genuinely recycled opening needs the extra sentence hold.
@@ -2982,11 +2997,13 @@ class CharacterAgent:
             repeated_opening = bool(duplicate_guard and len(normalized_opening) >= 24
                                     and previous_normalized.startswith(normalized_opening))
             if repeated_opening and len(opening) < 1024:
+                latency_once("agent.guard_hold", hold_reason="repeated_opening")
                 # A prefix isn't a completed duplicate. Hold it for a bounded
                 # chance to continue, rather than retrying a valid new answer.
                 continue
             required_sentences = 3 if status_check else 2 if suspicious_opener or require_pending_response or repeated_opening or required_anchors else 1
             if sentence_count < required_sentences and len(opening) < 220:
+                latency_once("agent.guard_hold", hold_reason="additional_sentences", required_sentences=required_sentences)
                 continue
             duplicate = self._stale_duplicate_assessment(opening, previous_assistant_reply, user_text)
             if self._has_unconfirmed_continuity_accusation(opening) or self._has_unconfirmed_assistant_content_attribution(

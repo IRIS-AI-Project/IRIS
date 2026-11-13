@@ -140,6 +140,8 @@ class Settings(BaseSettings):
     voice_stt_onnx_threads: int = Field(default=4, ge=1, le=16)
     voice_stt_onnx_cpu_threads: int = Field(default=8, ge=1, le=16)
     voice_stt_process_while_speaking: bool = True
+    voice_latency_diagnostics_enabled: bool = True
+    voice_latency_persist: bool = True
     voice_live_parallel_appraisal: bool = True
     voice_torch_cpu_threads: int = 4
     voice_torch_interop_threads: int = 1

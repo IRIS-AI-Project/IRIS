@@ -45,6 +45,8 @@ class FakeAudioContext {
   static instance: FakeAudioContext;
   static initialState: AudioContextState = "running";
   currentTime = 1;
+  baseLatency = .01;
+  outputLatency = .02;
   state: AudioContextState;
   destination = {} as AudioDestinationNode;
   deferred: Deferred[] = [];
@@ -71,6 +73,52 @@ const buffer = (duration: number) => ({ duration }) as AudioBuffer;
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("TTSStreamPlayer", () => {
+  it("reports decode, prebuffer and scheduling separately without changing the start", async () => {
+    vi.useFakeTimers();
+    const timings = vi.fn();
+    const started = vi.fn();
+    const player = new TTSStreamPlayer(started, vi.fn(), vi.fn(), {
+      prebufferSegments: 2, prebufferMs: 100, startLeadMs: 10, onTiming: timings,
+    });
+    player.begin("timed");
+    await player.unlock();
+    const pending = player.enqueue("timed", 0, audio());
+    await Promise.resolve();
+    await Promise.resolve();
+    const context = FakeAudioContext.instance;
+    context.deferred[0].resolve(buffer(.05));
+    await pending;
+    expect(timings.mock.calls.map(([sample]) => sample.stage)).toEqual(["decoded"]);
+    vi.advanceTimersByTime(100);
+    expect(context.sources[0].start).toHaveBeenCalledWith(1.01);
+    expect(timings.mock.calls[1][0]).toMatchObject({ stage: "scheduled", segment_id: 0,
+      base_latency_ms: 10, output_latency_ms: 20 });
+    vi.advanceTimersByTime(11);
+    expect(started).toHaveBeenCalledWith("timed");
+    expect(timings.mock.calls.map(([sample]) => sample.stage)).toEqual(["decoded", "scheduled", "started"]);
+    player.stop();
+  });
+
+  it("ignores diagnostic callback failures and stale decoded audio", async () => {
+    const onTiming = vi.fn(() => { throw new Error("collector failed"); });
+    const player = new TTSStreamPlayer(vi.fn(), vi.fn(), vi.fn(), { onTiming });
+    player.begin("first");
+    const pending = player.enqueue("first", 0, audio());
+    await tick();
+    const context = FakeAudioContext.instance;
+    context.deferred[0].resolve(buffer(.5));
+    await pending;
+    expect(context.sources[0].start).toHaveBeenCalled();
+    const calls = onTiming.mock.calls.length;
+    player.begin("second");
+    const stale = player.enqueue("second", 0, audio());
+    await tick();
+    player.stop();
+    context.deferred[1].resolve(buffer(.5));
+    await stale;
+    expect(onTiming).toHaveBeenCalledTimes(calls);
+  });
+
   it("mutes current and future sources without stopping the speech clock", async () => {
     const player=new TTSStreamPlayer(vi.fn(),vi.fn(),vi.fn());
     player.begin("muted");player.setMuted(true);
