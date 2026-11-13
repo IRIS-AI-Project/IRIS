@@ -27,6 +27,7 @@ use shortcut_preferences::{get_shortcut_preferences, set_shortcut_preferences, s
 
 mod window_preferences;
 mod desktop_avatar;
+mod reminder_window;
 mod text_editor;
 use text_editor::{capture_editor_selection, close_text_editor, open_text_editor, replace_editor_selection, take_text_editor_updates};
 use desktop_avatar::{DesktopAvatarState, get_desktop_avatar_monitors, configure_desktop_avatar,
@@ -1590,6 +1591,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_shortcut_preferences,
+            reminder_window::show_reminder_window,
             set_shortcut_preferences,
             set_shortcut_recording,
             get_window_preferences,

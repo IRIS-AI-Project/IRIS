@@ -1,0 +1,81 @@
+html {
+  color-scheme: dark;
+  background: transparent;
+}
+
+body {
+  box-sizing: border-box;
+  margin: 0;
+  /* The native window clips anything beyond these transparent gutters. */
+  padding: 62px 24px 42px;
+  height: 100dvh;
+  overflow: hidden;
+  color: var(--color-text);
+  font-family: var(--font-ui, "Segoe UI", sans-serif);
+}
+
+#root,
+.iris-reminder {
+  height: 100%;
+}
+
+.notification-card.iris-reminder-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 8px 10px 8px 76px;
+  gap: 6px;
+  background: var(--surface-toast);
+  box-shadow: var(--depth-toast);
+  isolation: isolate;
+  overflow: visible;
+}
+
+.iris-reminder-portrait {
+  position: absolute;
+  top: -63px;
+  left: 16px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.iris-reminder-content {
+  flex: 1;
+  align-self: stretch;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.iris-reminder-label {
+  color: var(--color-text-soft);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 12px;
+}
+
+.iris-reminder-content .notification-message {
+  color: var(--color-text);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 18px;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
+.iris-reminder button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-control-sm);
+}

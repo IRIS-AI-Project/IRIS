@@ -1,23 +1,21 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
+import { listen } from "@tauri-apps/api/event";
 import { isDesktopApp } from "../desktop";
 import { getReminders, acknowledgeReminder, updateReminder, type Reminder } from "../product-api";
 import { notify } from "../notifications";
+import { DESKTOP_REMINDER_READ } from "../reminder-events";
 
 const displayed = new Set<string>();
 const pending = new Set<string>();
 
 export async function allowReminderNotifications(): Promise<boolean> {
-  if (isDesktopApp()) return await isPermissionGranted() || await requestPermission() === "granted";
   return typeof Notification !== "undefined" && (Notification.permission === "granted" || await Notification.requestPermission() === "granted");
 }
 
 export async function showSystemReminder(item: Reminder): Promise<boolean> {
   if (isDesktopApp()) {
-    if (!await isPermissionGranted()) return false;
-    await invoke("plugin:notification|notify", { options: { title: "Iris · Напоминание", body: item.title } });
-    return true;
+    return invoke<boolean>("show_reminder_window", { title: item.title, deliveryToken: item.delivery_token });
   }
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     new Notification("Iris · Напоминание", { body: item.title, tag: item.delivery_token });
@@ -52,11 +50,15 @@ async function deliver(item: Reminder) {
 
 export function ReminderDelivery({ enabled }: { enabled: boolean }) {
   useEffect(() => {
-    if (!enabled) return;
     const controller = new AbortController();
+    const desktopListener = isDesktopApp() ? listen<string>(DESKTOP_REMINDER_READ, ({ payload }) => {
+      if (!controller.signal.aborted && typeof payload === "string" && payload) {
+        notify.dismiss(`reminder.${payload}`);
+      }
+    }).catch(() => undefined) : Promise.resolve(undefined);
     let busy = false;
     const poll = async () => {
-      if (busy) return;
+      if (!enabled || busy || controller.signal.aborted) return;
       busy = true;
       try {
         const response = await getReminders(true, controller.signal);
@@ -67,10 +69,18 @@ export function ReminderDelivery({ enabled }: { enabled: boolean }) {
       } catch { /* A transient connection failure retries on the next tick. */ }
       finally { busy = false; }
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
-    window.addEventListener("focus", poll);
-    return () => { controller.abort(); clearInterval(timer); window.removeEventListener("focus", poll); };
+    const pollWhenReady = () => { void desktopListener.then(poll); };
+    const timer = enabled ? window.setInterval(pollWhenReady, 5000) : undefined;
+    if (enabled) {
+      pollWhenReady();
+      window.addEventListener("focus", pollWhenReady);
+    }
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", pollWhenReady);
+      void desktopListener.then(unlisten => unlisten?.());
+    };
   }, [enabled]);
   return null;
 }

@@ -9,8 +9,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       input: mode === "preview-tools"
-        ? { index: "index.html", designPack: "design-pack.html", startupPreview: "startup-preview.html", startupGamePreview: "startup-game-preview.html", changelogPreview: "changelog-preview.html", installerPreview: "installer-preview.html" }
-        : { index: "index.html" },
+        ? { index: "index.html", reminder: "reminder.html", designPack: "design-pack.html", startupPreview: "startup-preview.html", startupGamePreview: "startup-game-preview.html", changelogPreview: "changelog-preview.html", installerPreview: "installer-preview.html" }
+        : { index: "index.html", reminder: "reminder.html" },
     },
   },
 }));

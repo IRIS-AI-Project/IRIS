@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "reminder-window",
+  "description": "Allows the Iris reminder card to report reads and dismiss its own window",
+  "windows": ["iris-reminder-*"],
+  "permissions": ["core:event:allow-emit-to", "core:window:allow-close"]
+}
