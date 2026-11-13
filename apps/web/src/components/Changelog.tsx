@@ -73,7 +73,7 @@ function ReleaseArticle({ release, installed }: { release: ReleaseNote; installe
   </article>;
 }
 
-function ChangelogContent({ releases, installedVersion, selected, onSelect }: { releases: ReleaseNote[]; installedVersion: string; selected: string; onSelect: (version: string) => void }) {
+function ChangelogContent({ releases, installedVersion, selected, onSelect }: { releases: ReleaseNote[]; installedVersion: string | null; selected: string; onSelect: (version: string) => void }) {
   const release = releases.find(item => item.version === selected) ?? releases[0];
   return <div className="changelog-layout">
     <div className="changelog-version-bar">
@@ -92,13 +92,13 @@ function ChangelogContent({ releases, installedVersion, selected, onSelect }: { 
   </div>;
 }
 
-export function ChangelogDialog({ open, onClose, releases = availableReleases, installedVersion = APP_VERSION }: {
-  open: boolean; onClose: () => void; releases?: ReleaseNote[]; installedVersion?: string;
+export function ChangelogDialog({ open, onClose, releases = availableReleases, installedVersion = APP_VERSION, container }: {
+  open: boolean; onClose: () => void; releases?: ReleaseNote[]; installedVersion?: string | null; container?: HTMLElement | null;
 }) {
-  const [selected, setSelected] = useState(installedVersion);
-  useLayoutEffect(() => { if (open) setSelected(installedVersion); }, [open, installedVersion]);
+  const [selected, setSelected] = useState(installedVersion ?? APP_VERSION);
+  useLayoutEffect(() => { if (open) setSelected(installedVersion ?? APP_VERSION); }, [open, installedVersion]);
   const heading = <div className="changelog-window-heading" aria-hidden="true"><BookOpen size={20} /><span>Что нового</span></div>;
-  return <AppDialog className="changelog-dialog" open={open} onClose={onClose} title="Что нового" headerContent={heading} variant="info" size="wide" presentation="spotlight">
+  return <AppDialog className="changelog-dialog" open={open} onClose={onClose} title="Что нового" headerContent={heading} variant="info" size="wide" presentation="spotlight" container={container} showRim={!container}>
     {open && <ChangelogContent releases={releases} installedVersion={installedVersion} selected={selected} onSelect={setSelected} />}
   </AppDialog>;
 }

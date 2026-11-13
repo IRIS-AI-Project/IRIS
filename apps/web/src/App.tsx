@@ -84,6 +84,7 @@ const StatePage = lazy(() => import("./state").then(({ StatePage }) => ({ defaul
 const CodingAgentPage = lazy(() => import("./coding").then(({ CodingAgentPage }) => ({ default: CodingAgentPage })));
 const LazyChatPage = lazy(() => Promise.resolve({ default: ChatPage }));
 const LazySettingsPage = lazy(() => import("./settings/SettingsPage").then(module => ({ default: module.SettingsPage })));
+const LazyInstallerPreview = lazy(() => import("./installer/InstallerPreviewApp").then(module => ({ default: module.InstallerPreviewApp })));
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "iris.sidebar.collapsed";
 const CHAT_ERROR_AUTO_DISMISS_MS = 8_000;
@@ -166,6 +167,16 @@ function isQaStudioWindow(): boolean {
 
 export default function App() {
   useIndicatorAnimations();
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("view") === "installer" || params.get("installer") === "1") {
+      return (
+        <Suspense fallback={<p role="status">Загрузка установщика…</p>}>
+          <LazyInstallerPreview />
+        </Suspense>
+      );
+    }
+  }
   if ((window as unknown as { __IRIS_VIEW__?: string }).__IRIS_VIEW__ === "desktop-avatar") {
     return <Suspense fallback={null}><DesktopAvatarPage /></Suspense>;
   }

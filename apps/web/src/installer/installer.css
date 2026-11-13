@@ -1,0 +1,1160 @@
+/* ==========================================================================
+   Iris Installer — Sculpted Liquid-Notch Architecture & Protruding Cutouts
+   100% Authentic Iris Tokens (tokens.css) • Zero Duplicate Logos • Anime.js v4
+   ========================================================================== */
+
+/* Browser Preview Shell */
+.iris-launcher-preview-shell {
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--color-base-deep);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  font-family: var(--font-ui, "Geologica", sans-serif);
+  color: var(--color-text, #ECEEF3);
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Preview Top Toolbar */
+.iris-launcher-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 16px;
+  border-radius: var(--radius-plate);
+  corner-shape: var(--corner-shape);
+  background: var(--color-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  z-index: 50;
+  max-width: 100%;
+}
+
+.iris-launcher-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text, #ECEEF3);
+  padding-right: 10px;
+  white-space: nowrap;
+}
+
+.iris-launcher-preview-title-badge {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  corner-shape: var(--corner-shape);
+  background: var(--color-accent-soft);
+  color: var(--color-text-soft);
+}
+
+.iris-launcher-scenarios-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.iris-launcher-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-soft, rgba(255, 255, 255, 0.68));
+  font-family: var(--font-ui, "Geologica", sans-serif);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.iris-launcher-pill-btn:hover {
+  color: var(--color-text, #ECEEF3);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.iris-launcher-pill-btn.is-active {
+  background: var(--color-accent, #695B86);
+  color: var(--color-accent-ink, #F6F4FB);
+}
+
+.iris-launcher-pill-btn.is-warning.is-active {
+  background: var(--color-warning, #9a7b4f);
+  color: #fff;
+}
+
+.iris-launcher-pill-btn.is-danger.is-active {
+  background: var(--color-danger, #865b5c);
+  color: #fff;
+}
+
+/* ==========================================================================
+   INSTALLER WINDOW CHASSIS
+   Solid Graphite Unibody so Liquid Concave Fillets Match 1:1
+   ========================================================================== */
+.installer-window {
+  --installer-chassis: var(--color-base);
+  width: 960px;
+  height: 580px;
+  background: var(--installer-chassis);
+  border-radius: var(--radius-shell);
+  corner-shape: var(--corner-shape);
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 34px 90px rgba(0, 0, 0, 0.78),
+    0 10px 28px rgba(0, 0, 0, 0.45);
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 8px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   LEFT WORKSTAGE: Brand Header + Step Rail + Editorial Copy + Native Controls
+   ========================================================================== */
+.installer-left-workstage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 6px 10px 8px 14px;
+  position: relative;
+  z-index: 25;
+}
+
+/* Strictly ONE Brand Logo in the Entire Window */
+.installer-brand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.installer-brand-lockup.brand-lockup {
+  width: 108px;
+  height: 40px;
+  transform: none;
+  inset: 0;
+}
+
+.installer-brand-lockup > .brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+/* ==========================================================================
+   ANIMATED 4-STEP PILL RAIL (SetupStepNavigation Pattern)
+   ========================================================================== */
+.installer-wizard-flow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.installer-step-rail {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-selection-track, #15161a);
+  box-shadow: var(--depth-selection-track);
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+
+.installer-step-face {
+  position: absolute !important;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 84px;
+  z-index: 0;
+  border-radius: var(--radius-control) !important;
+  corner-shape: var(--corner-shape);
+  pointer-events: none;
+}
+
+.installer-step-tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 13px;
+  border-radius: var(--radius-control);
+  corner-shape: var(--corner-shape);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.46));
+  font-family: var(--font-ui, "Geologica", sans-serif);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transform: none !important;
+  white-space: nowrap;
+}
+
+.installer-step-tab:hover {
+  color: var(--color-text, #ECEEF3);
+  transform: none !important;
+}
+
+.installer-step-tab.is-current {
+  color: var(--color-accent-ink, #F6F4FB);
+  font-weight: 650;
+}
+
+.installer-step-tab.is-passed {
+  color: var(--color-text-soft, rgba(255, 255, 255, 0.72));
+}
+
+.installer-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+}
+
+.installer-step-tab.is-passed .installer-step-num {
+  color: var(--color-success-text, #9fd8b4);
+  opacity: 1;
+}
+
+/* ==========================================================================
+   STEP BODY & EDITORIAL TYPOGRAPHY
+   ========================================================================== */
+.installer-step-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.installer-step-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
+  gap: 20px;
+}
+
+.installer-copy-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.installer-step-eyebrow {
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.46));
+}
+
+.installer-display-title {
+  margin: 0;
+  font-family: var(--font-heading, "Days One", sans-serif);
+  font-size: clamp(25px, 2.9vw, 32px);
+  font-weight: 400;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+  color: var(--color-text, #ECEEF3);
+  text-wrap: balance;
+}
+
+.installer-display-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-soft, rgba(255, 255, 255, 0.68));
+  max-width: 400px;
+}
+
+/* ==========================================================================
+   STEP 01: ILLUSTRATED INTRODUCTION
+   ========================================================================== */
+.installer-feature-bento {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding-top: 60px;
+}
+
+.installer-feature-chip {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 88px 12px 16px;
+  border-radius: var(--radius-plate);
+  corner-shape: var(--corner-shape);
+}
+
+.installer-feature-face {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+}
+
+.installer-feature-art {
+  position: absolute;
+  top: -60px;
+  left: -6px;
+  display: block;
+  width: calc(100% + 12px);
+  max-width: none;
+  height: 136px;
+  object-fit: contain;
+  user-select: none;
+  filter: drop-shadow(0 7px 5px rgb(0 0 0 / .25));
+}
+
+.installer-feature-accent {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  corner-shape: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.installer-feature-light { z-index: 2; }
+
+.installer-surface-card.installer-upgrade-summary { padding: 22px; gap: 18px; }
+.installer-upgrade-summary p { margin: 0; font: 400 13px/1.65 var(--font-ui); color: var(--color-text-soft); }
+.installer-version-change { display: grid; grid-template-columns: 1fr 24px 1fr; align-items: center; gap: 20px; }
+.installer-version-change span { display: grid; gap: 8px; }
+.installer-version-change small { color: var(--color-text-muted); font: 400 11px/1.5 var(--font-ui); }
+.installer-version-change strong { font: 600 30px/1.2 var(--font-ui); color: var(--color-text); }
+.installer-version-change > svg { color: var(--color-text-muted); }
+.installer-upgrade-changelog { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; margin-left: -10px; font-size: 12px; }
+.installer-upgrade-actions > :first-child { order: 2; margin-left: auto; }
+.installer-upgrade-actions > :last-child { order: 1; margin-left: 0; }
+.installer-surface-card.installer-uninstall-intro { padding: 18px; gap: 12px; }
+.installer-uninstall-intro > strong { font-size: 15px; }
+.installer-uninstall-intro > p, .installer-uninstall-result p { margin: 0; color: var(--color-text-soft); font: 400 12px/1.65 var(--font-ui); }
+.installer-uninstall-intro .installer-checkbox-label { font-size: 12px; gap: 10px; }
+.installer-feedback-summary { display: flex; align-items: center; gap: 8px; }
+.installer-feedback-summary > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-soft); font-size: 11px; }
+.installer-feedback-summary > button { padding: 7px 10px; font-size: 11px; }
+.installer-retention-list { display: grid; gap: 7px; }
+.installer-retention-pane { gap: 14px; }
+.installer-retention-row { gap: 12px; padding: 8px 13px; }
+.installer-retention-row > span { display: grid; gap: 3px; }
+.installer-retention-row strong { font: 550 12px/1.4 var(--font-ui); }
+.installer-retention-row small { color: var(--color-text-muted); font: 400 10px/1.5 var(--font-ui); }
+.installer-options-note.installer-removal-warning { color: var(--color-danger-text); }
+.installer-surface-card.installer-uninstall-result { flex-direction: row; align-items: flex-start; gap: 14px; padding: 20px; }
+.installer-uninstall-result > svg { flex-shrink: 0; color: var(--color-text-soft); }
+.installer-uninstall-result > div { display: grid; gap: 8px; }
+.installer-uninstall-result strong { font-size: 13px; }
+.installer-report-button { align-self: flex-start; padding: 10px 15px; font-size: 12px; }
+.installer-feedback-reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.installer-feedback-reasons .installer-check-card { min-height: 44px; font-size: 12px; }
+.installer-comment-label { display: grid; gap: 7px; color: var(--color-text); font-size: 12px; }
+.installer-comment-label > span { color: var(--color-text-muted); font-size: 11px; }
+.installer-comment-label textarea, .installer-report-preview { width: 100%; resize: vertical; min-height: 78px; max-height: 180px; padding: 12px; border-radius: var(--radius-control-sm); corner-shape: var(--corner-shape); background: var(--surface-field); box-shadow: var(--depth-field); color: var(--color-text); font: 400 12px/1.6 var(--font-ui); }
+.installer-report-preview { min-height: 180px; }
+.installer-step-tab:disabled { cursor: default; }
+
+/* Small scene partners stay outside the controls' hit areas. */
+.installer-scene-chibi {
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 6px 5px rgb(0 0 0 / .22));
+}
+
+.installer-options-heading { position: relative; min-height: 100px; justify-content: center; padding-right: 146px; }
+.installer-options-heading .installer-display-title { max-width: 300px; font-size: 28px; }
+.installer-folder-guide { position: absolute; right: 40px; top: -5px; width: 126px; height: 132px; transform: scaleX(-1); z-index: 1; }
+
+.installer-installation-scene { position: relative; padding-top: 110px; }
+.installer-laptop-chibi { position: absolute; top: -18px; right: 16px; width: 156px; height: 144px; z-index: 1; }
+.installer-launch-action { position: relative; }
+.installer-launch-guide { position: absolute; bottom: calc(100% + 8px); left: 8px; width: 146px; height: 146px; }
+
+.installer-low-disk-scene { display: grid; grid-template-columns: 144px minmax(0, 1fr); gap: 24px; align-items: center; }
+.installer-low-disk-scene img { width: 144px; height: 188px; }
+.installer-low-disk-copy { display: grid; gap: 18px; }
+.installer-disk-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0; }
+.installer-disk-facts div { display: grid; gap: 6px; }
+.installer-disk-facts dt { color: var(--color-text-muted); font: 400 11px/1.5 var(--font-ui); }
+.installer-disk-facts dd { margin: 0; color: var(--color-text); font: 600 23px/1.2 var(--font-ui); }
+.installer-low-disk-scene p { margin: 0; color: var(--color-text-soft); font: 400 13px/1.7 var(--font-ui); }
+
+.installer-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.installer-chip-text strong {
+  min-height: 34px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-text, #ECEEF3);
+  line-height: 1.3;
+}
+
+.installer-chip-text span {
+  font-size: 11px;
+  color: var(--color-text-soft, rgba(255, 255, 255, 0.68));
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   STEP 02: PATH, STORAGE & SHORTCUTS
+   ========================================================================== */
+.installer-options-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.installer-surface-card {
+  padding: 13px 15px;
+  border-radius: var(--radius-plate);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-row);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.installer-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.installer-path-icon {
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.installer-path-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px !important;
+  min-height: 44px !important;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  border-radius: var(--radius-control-sm) !important;
+  corner-shape: var(--corner-shape);
+}
+
+.installer-browse-btn {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 15px !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  border-radius: var(--radius-control-sm) !important;
+  corner-shape: var(--corner-shape);
+  flex-shrink: 0;
+  transform: none !important;
+}
+
+.installer-browse-btn:hover {
+  transform: none !important;
+}
+
+.installer-disk-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.installer-disk-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--color-text-soft, rgba(255, 255, 255, 0.68));
+}
+
+.installer-disk-meta strong {
+  color: var(--color-text, #ECEEF3);
+}
+
+.installer-storage-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-selection-track, #141519);
+  box-shadow: var(--depth-selection-track);
+  overflow: hidden;
+}
+
+.installer-storage-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent, #695B86);
+}
+
+.installer-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.installer-check-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border-radius: var(--radius-control);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-row);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text, #ECEEF3);
+  cursor: pointer;
+}
+
+.installer-check-inline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--color-text, #ECEEF3);
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   STEP 03: INSTALLING PROGRESS CARD
+   ========================================================================== */
+.installer-progress-card {
+  margin: 0;
+  padding: 16px 18px;
+  gap: 12px;
+}
+
+.installer-progress-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.installer-progress-number {
+  font-family: var(--font-heading, "Days One", sans-serif);
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text, #ECEEF3);
+}
+
+.startup-progress.installer-operation-meter {
+  width: 100%;
+  margin-top: 0;
+}
+
+/* ==========================================================================
+   STEP 04: COMPLETED SUMMARY CARD
+   ========================================================================== */
+.installer-done-card {
+  margin: 0;
+  padding: 14px 16px;
+  gap: 12px;
+}
+
+.installer-done-path-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.installer-done-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.48));
+}
+
+.installer-done-code {
+  display: block;
+  padding: 9px 13px;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-field);
+  box-shadow: var(--depth-field);
+  color: var(--color-text, #ECEEF3);
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+}
+
+/* ==========================================================================
+   BOTTOM ACTIONS ROW
+   Shared MaterialButton feedback keeps hit targets stationary
+   ========================================================================== */
+.installer-actions-row {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.installer-btn-secondary {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 20px !important;
+  border-radius: var(--radius-control) !important;
+  corner-shape: var(--corner-shape);
+  font-size: 12.5px !important;
+  font-weight: 550 !important;
+}
+
+.installer-btn-primary {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 22px !important;
+  border-radius: var(--radius-control) !important;
+  corner-shape: var(--corner-shape);
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-left: auto;
+}
+
+
+/* ==========================================================================
+   RIGHT SCULPTED ART STAGE:
+   Liquid Concave Cutouts + Protruding/Clipped Iris Cutout
+   ========================================================================== */
+.installer-art-stage {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  overflow: visible;
+  z-index: 10;
+}
+
+/* 1. Clipped Poster Vessel with Sculpted Liquid Notches
+   IMPORTANT: Corners covered by dark chassis notches (top-left, top-right, and the active
+   bottom notch) MUST have border-radius: 0 so Chromium never alpha-blends the bright poster
+   against a shared rounded clip mask ("белые уголки" fix). Only the exposed bottom corner is rounded! */
+.installer-poster-vessel {
+  position: absolute;
+  inset: 0 0 0 18px;
+  border-radius: 0 0 28px 0;
+  corner-shape: squircle;
+  overflow: hidden;
+  background: var(--installer-chassis);
+  z-index: 2;
+}
+
+.installer-poster-vessel.is-bottom-left {
+  border-radius: 0 0 28px 0;
+}
+
+.installer-poster-vessel.is-bottom-right,
+.installer-poster-vessel.is-step-left-out {
+  border-radius: 0 0 0 28px;
+}
+
+/* Step 03 ("step-left-out"): lower half of the poster steps out 28px to the left! */
+.installer-poster-vessel.is-step-left-out {
+  inset: 0 0 0 -10px;
+}
+
+.installer-poster-backdrop {
+  position: absolute;
+  inset: calc(-1 * var(--installer-backdrop-bleed, 4%));
+  width: calc(100% + 2 * var(--installer-backdrop-bleed, 4%));
+  height: calc(100% + 2 * var(--installer-backdrop-bleed, 4%));
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Pure banner steps (Steps 02 & 03): 100% sharp, crisp poster artwork */
+.installer-poster-backdrop.is-pure-banner {
+  opacity: 0.96;
+  filter: brightness(0.94) contrast(1.03);
+}
+
+/* Steps with foreground character (Steps 01 & 04): visible banner behind Iris */
+.installer-poster-backdrop.has-foreground-character {
+  opacity: 0.94;
+  filter: brightness(0.86) contrast(1.04) saturate(1.04);
+}
+
+.installer-poster-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(95% 85% at 55% 42%, transparent 38%, rgba(15, 16, 21, 0.28) 100%),
+    linear-gradient(180deg, rgba(15, 16, 21, 0.1) 0%, transparent 35%, rgba(15, 16, 21, 0.38) 100%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Sculpted Liquid-Notch Cutout Pockets (Matching --installer-chassis 1:1) */
+.installer-cutout-notch {
+  position: absolute;
+  background: var(--installer-chassis);
+  z-index: 18;
+}
+
+.installer-concave-svg {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Top-Left Architectural Notch (houses quiet v0.9.1 button) */
+.installer-cutout-notch.is-top-left {
+  top: 0;
+  left: 0;
+  width: 78px;
+  height: 42px;
+  border-bottom-right-radius: 22px;
+}
+
+/* When poster steps out 28px to the left on Step 03, keep top-left notch aligned with v0.9.1 */
+.installer-poster-vessel.is-step-left-out .installer-cutout-notch.is-top-left {
+  left: 28px;
+}
+
+.installer-cutout-notch.is-top-left .corner-tl-right {
+  top: 0;
+  right: -22px;
+}
+
+.installer-cutout-notch.is-top-left .corner-tl-bottom {
+  bottom: -22px;
+  left: 0;
+}
+
+/* Step 03 Upper-Left Recess: carves the upper-left 29px with a single continuous
+   C1 cubic-Bezier S-curve at the bottom so there is ZERO horizontal spike ("зазубрина") */
+.installer-cutout-notch.is-left-step-recess {
+  top: 0;
+  left: 0;
+  width: 29px;
+  height: 192px;
+  border-radius: 0;
+}
+
+.installer-left-step-scurve {
+  position: absolute;
+  bottom: -48px;
+  left: 0;
+  width: 29px;
+  height: 48px;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Top-Right Window Chrome Pocket */
+.installer-cutout-notch.is-top-right {
+  top: 0;
+  right: 0;
+  width: 92px;
+  height: 42px;
+  border-bottom-left-radius: 22px;
+}
+
+.installer-cutout-notch.is-top-right .corner-tr-left {
+  top: 0;
+  left: -22px;
+}
+
+.installer-cutout-notch.is-top-right .corner-tr-bottom {
+  bottom: -22px;
+  right: 0;
+}
+
+/* Bottom-Left Bento Card Pocket (Steps 01 & 04 — sits in .installer-art-stage at left: 18px) */
+.installer-cutout-notch.is-bottom-left {
+  bottom: 0;
+  left: 18px;
+  width: 226px;
+  height: 64px;
+  border-top-right-radius: 26px;
+}
+
+.installer-cutout-notch.is-bottom-left .corner-bl-top {
+  top: -22px;
+  left: 0;
+}
+
+.installer-cutout-notch.is-bottom-left .corner-bl-right {
+  bottom: 0;
+  right: -22px;
+}
+
+/* Bottom-Right Bento Card Pocket (Steps 02 & 03 — sits in .installer-art-stage at right: 0) */
+.installer-cutout-notch.is-bottom-right {
+  bottom: 0;
+  right: 0;
+  width: 204px;
+  height: 64px;
+  border-top-left-radius: 26px;
+}
+
+.installer-cutout-notch.is-bottom-right .corner-br-top {
+  top: -22px;
+  right: 0;
+}
+
+.installer-cutout-notch.is-bottom-right .corner-br-left {
+  bottom: 0;
+  left: -22px;
+}
+
+/* ==========================================================================
+   2A. SINGLE-LAYER CLIPPED-TO-BANNER CHARACTER (Step 04 Completed):
+       One unified image layer! Top extends to -28px so hair buns rise above
+       the top edge without any seam/slicing, while left: 18px, bottom: 0, right: 0,
+       and .installer-cutout-notch.is-bottom-left (z-index: 18) cleanly trim the bottom-left!
+   ========================================================================== */
+.installer-character-clipped-stage {
+  position: absolute;
+  top: -28px;
+  left: 18px;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 0 28px 0;
+  corner-shape: squircle;
+  overflow: hidden;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.installer-character-clipped {
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  top: 12px;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  will-change: transform, opacity;
+}
+
+/* Keep the supplied portrait's lower crop flush with the poster's edge. */
+.installer-character-clipped.pose-reaching {
+  left: -4px;
+  right: -4px;
+  top: 34px;
+}
+
+/* ==========================================================================
+   2B. FULL PROTRUDING FOREGROUND CHARACTER LAYER (Step 01 & Signpost)
+   ========================================================================== */
+.installer-character-popout {
+  position: absolute;
+  z-index: 29;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  will-change: transform, opacity;
+}
+
+.installer-character-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  /* Keep the source raster stable while its parent moves at subpixel positions. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Step 1: Sideways lounging pose — legs & iris flowers spill left & over bottom pocket */
+.installer-character-popout.pose-sideways {
+  left: -26px;
+  right: -12px;
+  bottom: 44px;
+  height: 92%;
+}
+
+/* Installer warning illustration: keep the sign clear of the information button. */
+.installer-character-popout.pose-warning-sign {
+  left: 6px;
+  right: 6px;
+  bottom: 70px;
+  height: 76%;
+}
+
+/* ==========================================================================
+   3. INTERACTIVE POCKETS (Version Button, Window Controls, Bento Card)
+   Zero hover jumping on any of these!
+   ========================================================================== */
+.installer-top-left-pocket {
+  position: absolute;
+  top: 2px;
+  left: 20px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+}
+
+.installer-version-quiet-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 12px !important;
+  border-radius: 20px !important;
+  corner-shape: squircle;
+  font-family: var(--font-ui, "Geologica", sans-serif);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.56)) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: none !important;
+}
+
+.installer-version-quiet-btn:hover {
+  color: var(--color-text, #ECEEF3) !important;
+  transform: none !important;
+}
+
+/* Top-Right Docked Window Controls */
+.installer-window-controls-pocket {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.installer-win-btn {
+  width: 36px !important;
+  height: 32px !important;
+  min-width: 36px !important;
+  min-height: 32px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 20px !important;
+  corner-shape: squircle;
+  transform: none !important;
+}
+
+.installer-win-btn:hover {
+  transform: none !important;
+}
+
+/* Bottom Sculpted Bento Card Docked inside the Concave Notch — NO HOVER JUMP */
+.installer-bento-pocket-card {
+  position: absolute;
+  bottom: 4px;
+  height: 52px;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 26px;
+  corner-shape: squircle;
+  border: 0;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-row);
+  color: var(--color-text, #ECEEF3);
+  text-align: left;
+  cursor: pointer;
+  transform: none !important;
+}
+
+.installer-bento-pocket-card.is-left {
+  left: 18px;
+  width: 214px;
+}
+
+.installer-bento-pocket-card.is-right {
+  right: 4px;
+  width: 192px;
+}
+
+.installer-bento-icon {
+  width: 26px;
+  height: 28px;
+  color: var(--color-text-soft);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.installer-bento-copy {
+  flex: 1;
+  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.installer-bento-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  line-height: 1.35;
+}
+
+.installer-bento-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-text, #ECEEF3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.iris-launcher-preview-shell { height: 100dvh; min-height: 0; gap: 24px; overflow: auto; }
+.iris-launcher-preview-toolbar { flex-wrap: wrap; justify-content: center; flex-shrink: 0; }
+.iris-launcher-scenarios-group { flex-wrap: wrap; justify-content: center; }
+.iris-launcher-preview-stage { margin: auto; flex-shrink: 0; }
+.iris-launcher-preview-footer { display: grid; gap: 6px; min-height: 36px; text-align: center; font-size: 11px; color: var(--color-text-muted); }
+.installer-window { flex-shrink: 0; }
+.installer-step-body { overflow: visible; padding: 4px; margin: -4px; }
+.installer-step-pane { min-height: 0; flex: 1; }
+.installer-step-tab:focus-visible,
+.installer-bento-pocket-card:focus-visible,
+.iris-launcher-pill-btn:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.installer-options-stack { gap: 12px; }
+.installer-surface-card { padding: 16px; gap: 12px; border-radius: var(--radius-md); }
+.installer-check-card { min-height: 48px; border-radius: var(--radius-control); padding: 10px 12px; }
+.installer-options-note { margin: 0; padding: 0 4px; color: var(--color-text-muted); font-size: 12px; line-height: 1.6; }
+.installer-done-label { text-transform: none; letter-spacing: 0; }
+.installer-done-code { overflow-wrap: anywhere; }
+.installer-folder-link { display: inline-flex; align-items: center; align-self: flex-start; gap: 8px; min-height: 44px; padding: 8px 16px; border-radius: var(--radius-control) !important; corner-shape: var(--corner-shape); font-size: 12px; }
+.installer-window .installer-bento-pocket-card { border-radius: var(--radius-plate); corner-shape: var(--corner-shape); }
+.installer-window .installer-bento-icon { border-radius: var(--radius-xs); corner-shape: var(--corner-shape); }
+.installer-window .installer-version-quiet-btn,
+.installer-window .installer-win-btn { border-radius: var(--radius-control-sm) !important; corner-shape: var(--corner-shape); }
+
+/* Shared AppDialog surfaces are contained by the installer, including the changelog. */
+.installer-window > .app-dialog-host.is-spotlight {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  padding: 32px;
+  z-index: 100;
+  background: var(--color-backdrop);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-sizing: border-box;
+}
+.installer-window > .installer-dialog.is-spotlight > .app-dialog-card {
+  width: 600px;
+  max-height: 100%;
+  padding: 28px;
+  gap: 24px;
+  border: 0;
+  border-radius: var(--radius-dialog) !important;
+  corner-shape: var(--corner-shape);
+  background: var(--surface-card);
+  box-shadow: var(--depth-toast);
+}
+.installer-window > .installer-dialog.is-wide > .app-dialog-card { width: 680px; }
+.installer-window .installer-dialog .notification-card-header { align-items: flex-start; padding: 0; gap: 16px; }
+.installer-window .installer-dialog .notification-title { white-space: normal; font-size: 17px; line-height: 1.45; }
+.installer-window .installer-dialog .notification-message { font-size: 13px; line-height: 1.7; }
+.installer-window .installer-dialog .notification-header-content { gap: 8px; }
+.installer-window .installer-dialog .notification-icon-box { margin-top: 3px; color: var(--confirmation-icon); }
+.installer-window .installer-dialog .notification-side-actions { align-self: flex-start; }
+.installer-window > .installer-dialog.is-spotlight .notification-dialog-body { margin: 0; padding: 0; gap: 20px; overflow: auto; }
+.installer-window .installer-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin: 0; padding: 4px; }
+.installer-window .installer-dialog .dialog-actions button { min-height: 44px; }
+.installer-dialog-prose { display: grid; gap: 18px; font-size: 13px; line-height: 1.7; color: var(--color-text-soft); }
+.installer-dialog-item { display: grid; gap: 4px; }
+.installer-dialog-item strong { color: var(--color-text); font-weight: 550; }
+.installer-dialog-item code { font-size: 12px; overflow-wrap: anywhere; }
+.installer-checkbox-label { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 13px; line-height: 1.6; cursor: pointer; }
+.installer-dialog-warning { margin: 0; font-size: 12px; line-height: 1.6; color: var(--color-danger-text); }
+.installer-window > .app-dialog-host.changelog-dialog > .app-dialog-card.is-detached { width: 100%; height: 100%; max-height: 100%; }
+.installer-window .changelog-article-inner { padding: 12px 28px 28px; }
+
+
+/* Shared MaterialButton layers are used without installer-specific finishes. */
+.installer-current-operation { display: grid; gap: 5px; padding-top: 4px; }
+.installer-current-operation > span { color: var(--color-text-muted); font-size: 11px; }
+.installer-current-operation p { margin: 0; color: var(--color-text); font-size: 13px; line-height: 1.6; }
+
+/* Explicit compositor layers avoid pixel-snapped 2D raster movement inside clips. */
+.installer-poster-backdrop,
+.installer-character-clipped,
+.installer-character-popout {
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.installer-bento-arrow { flex-shrink: 0; color: var(--color-text-muted); }
+.installer-window .installer-info-dialog .notification-dialog-body { gap: 16px; }
+.installer-info-items { display: grid; gap: 14px; }
+.installer-info-item { display: flex; gap: 12px; }
+.installer-info-index { flex: 0 0 26px; padding-top: 2px; color: var(--color-text-muted); font: 400 11px/1.6 var(--font-ui); font-variant-numeric: tabular-nums; }
+.installer-info-item h3 { margin: 0 0 4px; font: 550 13px/1.5 var(--font-ui); color: var(--color-text); }
+.installer-info-item p { margin: 0; font: 400 12.5px/1.65 var(--font-ui); color: var(--color-text-soft); }
+.installer-info-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.installer-info-links a { display: flex; align-items: center; gap: 9px; min-height: 60px; padding: 10px 12px; border-radius: var(--radius-control); corner-shape: var(--corner-shape); background: var(--surface-card); box-shadow: var(--shadow-row); color: var(--color-text-soft); text-decoration: none; }
+.installer-info-links a > svg { flex-shrink: 0; }
+.installer-info-links a > svg:last-child { margin-left: auto; color: var(--color-text-muted); }
+.installer-info-links a span { display: grid; gap: 3px; min-width: 0; }
+.installer-info-links a strong { font: 500 12px/1.4 var(--font-ui); color: var(--color-text); }
+.installer-info-links a small { font: 400 10px/1.4 var(--font-ui); color: var(--color-text-muted); }
+.installer-info-links a:hover { color: var(--color-text); background: var(--color-surface-raised); }
+.installer-info-links a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }

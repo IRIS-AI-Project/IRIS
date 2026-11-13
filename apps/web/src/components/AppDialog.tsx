@@ -19,6 +19,7 @@ export interface AppDialogProps {
   variant?: "warning" | "danger" | "info";
   size?: "compact" | "wide";
   presentation?: "notification" | "spotlight";
+  container?: HTMLElement | null;
 }
 
 export function AppDialog({
@@ -34,6 +35,7 @@ export function AppDialog({
   variant = "warning",
   size = "compact",
   presentation = "notification",
+  container,
 }: AppDialogProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [rendered, setRendered] = useState(open);
@@ -62,11 +64,12 @@ export function AppDialog({
   }, [open, rendered, presentation]);
   useLayoutEffect(() => {
     if (!rendered || presentation !== "spotlight") return;
-    const background = [...document.body.children].filter(element => element !== hostRef.current && element instanceof HTMLElement) as HTMLElement[];
+    const parent = container ?? document.body;
+    const background = [...parent.children].filter(element => element !== hostRef.current && element instanceof HTMLElement) as HTMLElement[];
     const previous = background.map(element => element.hasAttribute("inert"));
     background.forEach(element => element.setAttribute("inert", ""));
     return () => background.forEach((element, index) => { if (!previous[index]) element.removeAttribute("inert"); });
-  }, [rendered, presentation]);
+  }, [rendered, presentation, container]);
   useLayoutEffect(() => {
     if (!rendered || !cardRef.current) return;
     if (presentation === "spotlight") {
@@ -254,5 +257,5 @@ export function AppDialog({
     </aside>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(content, container ?? document.body);
 }
