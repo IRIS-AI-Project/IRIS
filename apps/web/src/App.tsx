@@ -14,11 +14,14 @@ import { ChatWelcomePortrait } from "./components/ChatWelcomePortrait";
 import { useAvatarPresentation } from "./components/useAvatarPresentation";
 import { useDesktopConversationBridge, DOCUMENT_CHANGED } from "./desktop-avatar-bridge";
 import { requestJson } from "./api";
-import { IconInterfaceHome2, IconMailChatBubbleTextSquare, IconInterfaceTimeStopWatchCircle, IconComputerRobotCyborg1, IconInterfacePageControllerSettings, IconProgrammingScript2, IconInterfaceCursorArrow2 } from "./CustomIcons";
+import { openEditor } from "./skills/api";
+import { SkillsPage } from "./skills/SkillsPage";
+import { IconInterfaceHome2, IconMailChatBubbleTextSquare, IconInterfaceTimeStopWatchCircle, IconComputerRobotCyborg1, IconInterfacePageControllerSettings, IconProgrammingScript2, IconProgrammingModulePuzzle2, IconInterfaceCursorArrow2 } from "./CustomIcons";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconInterfaceCursorArrow2 as SendHorizontal, IconMailChatBubblePlus as MessageSquarePlus } from "./CustomIcons";
 const AvatarDevStudioStandalonePage = lazy(() => import("./components/AvatarDevPanel").then(module => ({ default: module.AvatarDevStudioStandalonePage })));
 const DesktopAvatarPage = lazy(() => import("./components/DesktopAvatar").then(module => ({ default: module.DesktopAvatar })));
+const TextEditorPage = lazy(() => import("./skills/TextEditorWindow").then(module => ({ default: module.TextEditorWindow })));
 
 
 
@@ -76,7 +79,7 @@ import { audioAnalyzer } from "./audio-analyzer";
 import { initialInterfaceLocale, interfaceIntlLocale, INTERFACE_LOCALE_CHANGED_EVENT, setInterfaceLocalePreference, useInterfaceLocale } from "./i18n";
 import { animateButtonPress, animateMessagePop, animateTabSwitch, animateThinkingWave, useInterfaceMotion, useDrawerMotion, usePresence } from "./animations";
 
-type AppView = "overview" | "chat" | "journal" | "memory" | "state" | "coding" | "settings";
+type AppView = "overview" | "chat" | "journal" | "memory" | "state" | "coding" | "skills" | "settings";
 
 const JournalPage = lazy(() => import("./journal").then(({ JournalPage }) => ({ default: JournalPage })));
 const MemoryPage = lazy(() => import("./memory").then(({ MemoryPage }) => ({ default: memo(MemoryPage) })));
@@ -179,6 +182,9 @@ export default function App() {
   }
   if ((window as unknown as { __IRIS_VIEW__?: string }).__IRIS_VIEW__ === "desktop-avatar") {
     return <Suspense fallback={null}><DesktopAvatarPage /></Suspense>;
+  }
+  if ((window as unknown as { __IRIS_VIEW__?: string }).__IRIS_VIEW__ === "text-editor") {
+    return <Suspense fallback={<p role="status">Открываю редактор…</p>}><TextEditorPage /></Suspense>;
   }
   if (isQaStudioWindow()) {
     return <Suspense fallback={<p role="status">Загрузка студии…</p>}><AvatarDevStudioStandalonePage /></Suspense>;
@@ -841,6 +847,17 @@ function MainApp() {
               </Suspense>
             </WorkspaceView>
           )}
+          {visitedViews.has("skills") && (
+            <WorkspaceView active={activeView === "skills"}>
+              <SkillsPage active={activeView === "skills"} onOpenInternet={() => {
+                setSettingsNavigationRequest({ section: "internet", id: Date.now() });
+                switchView("settings");
+              }} onOpenDeepSeek={() => {
+                setSettingsNavigationRequest({ section: "api-keys", target: "deepseek", id: Date.now() });
+                switchView("settings");
+              }} />
+            </WorkspaceView>
+          )}
           {visitedViews.has("settings") && (
             <WorkspaceView active={activeView === "settings"}>
               <Suspense fallback={<LoadingRing className="page-loading" />}>
@@ -927,6 +944,7 @@ const MAIN_NAVIGATION: Array<{ id: Exclude<AppView, "settings">; label: string; 
   { id: "memory", label: "Память", icon: IconComputerRobotCyborg1 },
   { id: "state", label: "Состояние", icon: IconInterfacePageControllerSettings },
   { id: "coding", label: "Coding Agent", icon: IconProgrammingScript2 },
+  { id: "skills", label: "Навыки", icon: IconProgrammingModulePuzzle2 },
 ];
 
 function Sidebar({
@@ -2401,7 +2419,14 @@ export function ChatPage({
       );
       await ensureLiveVoice();
       const input = new PcmInputClient(voiceInputWebSocketUrl(sessionId, 3), (event) => {
-        if (event.type === "voice.input.transcript" && event.transcript) {
+        if (event.type === "text_editor.intent" && event.editor_intent && event.editor_revision !== undefined) {
+          if (pcmInputRef.current !== input) return;
+          clearLiveSttTranscript();
+          setVoiceState("idle");
+          void openEditor(event.editor_revision, event.editor_intent).catch(() => {
+            notify.error("Редактор текста", "Не удалось открыть редактор. Проверьте, подключён ли навык.");
+          });
+        } else if (event.type === "voice.input.transcript" && event.transcript) {
           updateLiveSttTranscript(event.transcript, event.observation_only ? 3000 : 5000);
           setMessages((current) => [...current, {
             id: crypto.randomUUID(),

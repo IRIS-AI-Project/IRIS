@@ -66,6 +66,8 @@ _PROFILE_SETTINGS: dict[str, tuple[str, int]] = {
     "memory": ("llm_memory_max_tokens", 1_600),
     "reflection": ("llm_reflection_max_tokens", 300),
     "adjudication": ("llm_adjudication_max_tokens", 350),
+    "text_editor": ("llm_text_editor_max_tokens", 8_192),
+    "text_editor_voice": ("llm_text_editor_voice_max_tokens", 2_048),
     "coding": ("llm_coding_max_tokens", 8_192),
     "chat_json_repair": ("llm_chat_json_max_tokens", 900),
     "chat_json_guard_retry": ("llm_chat_json_max_tokens", 900),
@@ -259,7 +261,7 @@ class DeepSeekProvider(LLMProvider):
             profile.max_tokens,
         )
 
-        max_attempts = 1 if profile.purpose == "chat_search_bridge" else _MAX_ATTEMPTS
+        max_attempts = 1 if profile.purpose in {"chat_search_bridge", "text_editor", "text_editor_voice"} else _MAX_ATTEMPTS
         for attempt in range(1, max_attempts + 1):
             attempt_started_at = time.perf_counter()
             latency_mark("llm.request_started", request_id=request_id, purpose=profile.purpose,

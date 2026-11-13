@@ -24,6 +24,8 @@ from apps.backend.app.api.routes.chat import router as chat_router
 from apps.backend.app.api.routes.avatar import router as avatar_router
 from apps.backend.app.api.routes.events import router as events_router
 from apps.backend.app.api.routes.settings import _commit_runtime_settings_patch, router as settings_router
+from apps.backend.app.api.routes.skills import router as skills_router
+from apps.backend.app.skills.text_editor import TextEditor
 from apps.backend.app.api.routes.status import router as status_router
 from apps.backend.app.api.routes.voice import router as voice_router
 from apps.backend.app.api.routes.timeline import router as timeline_router
@@ -213,6 +215,7 @@ def create_app() -> FastAPI:
     )
     runtime_settings_store = RuntimeSettingsStore(settings.app_data_path / "settings.json")
     runtime_settings = runtime_settings_store.load(runtime_defaults)
+    text_editor = TextEditor(runtime_settings, (lambda: DeepSeekProvider(settings)) if settings.llm_api_key else None)
     voice_latency_journal = VoiceLatencyJournal(
         settings.app_data_path / "logs" / "voice-latency.jsonl" if settings.voice_latency_persist else None,
         enabled=settings.voice_latency_diagnostics_enabled,
@@ -722,6 +725,7 @@ def create_app() -> FastAPI:
         )
         if conversation_service is not None:
             decision_started = time.perf_counter()
+            editor_revision = text_editor.revision
             with latency_span("conversation.decision"):
                 result = await conversation_service.ingest_observation(
                     session_id=session_id,
@@ -746,6 +750,7 @@ def create_app() -> FastAPI:
                         else 0.9
                     ),
                     stt_uncertain=stt_uncertain,
+                    text_editor=text_editor if settings.desktop_auth_token and text_editor.enabled else None,
                 )
             if connection.latency_trace is not None:
                 connection.latency_trace.bind(result.utterance_id)
@@ -769,6 +774,19 @@ def create_app() -> FastAPI:
             if result.generation != session.generation:
                 if connection.latency_trace is not None:
                     connection.latency_trace.finish("superseded")
+                return
+            if result.text_edit is not None:
+                if text_editor.enabled and text_editor.revision == editor_revision:
+                    await connection.send({
+                        "type": "text_editor.intent",
+                        "editor_intent": result.text_edit.model_dump(),
+                        "editor_revision": editor_revision,
+                        "generation": result.generation,
+                    })
+                if connection.latency_trace is not None:
+                    connection.latency_trace.finish("text_editor")
+                await conversation_service.phase(session_id, ConversationPhase.LISTENING, connection.send)
+                await avatar_service.set_presence(session_id=session_id, state="listening")
                 return
             await connection.send({
                 "type": "voice.input.transcript",
@@ -1579,6 +1597,8 @@ def create_app() -> FastAPI:
     app.state.event_bus = event_bus
     app.state.runtime_settings = runtime_settings
     app.state.runtime_settings_store = runtime_settings_store
+    app.state.text_editor = text_editor
+    app.state.text_editor_settings_lock = asyncio.Lock()
     app.state.coding_agent_service = coding_agent_service
     app.state.coding_bridge = coding_bridge
     app.state.situational_coordinator = situational_coordinator
@@ -1597,6 +1617,7 @@ def create_app() -> FastAPI:
     app.include_router(avatar_router)
     app.include_router(events_router)
     app.include_router(settings_router)
+    app.include_router(skills_router)
     app.include_router(environment_router)
     app.include_router(status_router)
     app.include_router(voice_router)

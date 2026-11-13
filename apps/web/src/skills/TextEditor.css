@@ -1,0 +1,158 @@
+.text-editor {
+  min-width: 0;
+  color: var(--color-text);
+  font: 400 13px/1.45 var(--font-ui);
+}
+
+.text-editor.is-window {
+  height: 100dvh;
+  overflow: auto;
+  background: var(--surface-toast);
+}
+
+.text-editor-header {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 2px 8px;
+}
+
+.text-editor-header h1 {
+  flex: 1;
+  margin: 0;
+  font: 400 17px/1.2 var(--font-heading);
+}
+
+.text-editor-header h1:focus { outline: none; }
+.text-editor.is-window h1 { padding-inline-start: 12px; }
+
+.text-editor-body, .text-editor-more, .text-editor-form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-editor-body { padding: 0 8px 6px; }
+.text-editor.is-window .text-editor-body { padding: 0 14px 14px; }
+.text-editor-more { padding-block-start: 6px; }
+
+.text-editor-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.text-editor-source label { font-weight: 650; }
+.text-editor-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.text-editor button.text-editor-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+}
+
+.text-editor-field { display: grid; gap: 5px; color: var(--color-text-soft); }
+
+.text-editor textarea, .text-editor select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-select-field);
+  box-shadow: var(--depth-select-field);
+  padding: 9px 12px;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.text-editor textarea {
+  display: block;
+  min-height: 60px;
+  max-height: 180px;
+  resize: vertical;
+}
+
+.text-editor textarea::placeholder { color: var(--color-text-soft); }
+.text-editor select:focus-visible, .text-editor textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.text-editor-options {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  gap: 8px;
+}
+
+.text-editor-select { position: relative; display: grid; }
+.text-editor-select select {
+  appearance: none;
+  min-height: 44px;
+  padding-inline-end: 30px;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.text-editor-select svg { position: absolute; right: 10px; top: 50%; margin-top: -7px; pointer-events: none; }
+
+.text-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.text-editor-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+@media (max-width: 350px) {
+  .text-editor-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.text-editor-output { justify-content: flex-end; }
+.text-editor-options > button, .text-editor-actions > button, .text-editor-more > button,
+.text-editor-form > button, .text-editor-feedback > button, .text-editor-body > button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding-inline: 10px;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  font-size: 13px;
+  white-space: normal;
+}
+.text-editor-options > button > svg, .text-editor-actions > button > svg { flex: none; }
+
+.text-editor-feedback:empty { display: none; }
+.text-editor-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.text-editor-feedback p { margin: 0; color: var(--color-text-soft); overflow-wrap: anywhere; }
+.text-editor-feedback p[role="alert"] { color: var(--color-danger-text); }
+
+.text-editor .text-editor-consent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  background: rgb(225 221 239 / .06);
+  cursor: pointer;
+}
+.text-editor-consent .settings-switch-copy { display: grid; gap: 2px; }
+.text-editor-consent .settings-switch-copy strong { font-size: 13px; }
+.text-editor-consent .settings-switch-copy small { color: var(--color-text-soft); font-size: 12px; }
+.text-editor-consent .settings-switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.text-editor .iris-disclosure-trigger { min-height: 44px; }

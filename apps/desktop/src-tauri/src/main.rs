@@ -27,6 +27,8 @@ use shortcut_preferences::{get_shortcut_preferences, set_shortcut_preferences, s
 
 mod window_preferences;
 mod desktop_avatar;
+mod text_editor;
+use text_editor::{capture_editor_selection, close_text_editor, open_text_editor, replace_editor_selection, take_text_editor_updates};
 use desktop_avatar::{DesktopAvatarState, get_desktop_avatar_monitors, configure_desktop_avatar,
     set_desktop_avatar_regions, begin_desktop_avatar_transform, desktop_avatar_command,
     desktop_avatar_snapshot, open_main_from_avatar};
@@ -1494,6 +1496,10 @@ fn main() {
             show_main_window(app)
         }))
         .on_window_event(|window, event| {
+            if matches!(window.label(), "text_editor" | "desktop_avatar") {
+                text_editor::window_event(window, event);
+                return;
+            }
             if window.label() == "qa_studio" {
                 if matches!(event, WindowEvent::Destroyed) {
                     let _ = window.app_handle().emit("qa-studio-state", false);
@@ -1546,6 +1552,7 @@ fn main() {
             let state = DesktopState::new();
             app.manage(state);
             app.manage(DesktopAvatarState::default());
+            app.manage(text_editor::EditorState::default());
             app.manage(WindowPreferences::load(
                 app.path().app_config_dir()?.join("window-preferences.json"),
             ));
@@ -1619,6 +1626,7 @@ fn main() {
             is_qa_studio_open,
             get_desktop_avatar_monitors, configure_desktop_avatar, set_desktop_avatar_regions,
             begin_desktop_avatar_transform, desktop_avatar_command, desktop_avatar_snapshot,
+            open_text_editor, take_text_editor_updates, capture_editor_selection, replace_editor_selection, close_text_editor,
             open_main_from_avatar
         ])
         .build(tauri::generate_context!())

@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from typing import Awaitable, Callable
+
+from apps.backend.app.skills.text_editor import TextEditor, VoiceEditIntent
 from uuid import uuid4
 
 from apps.backend.app.conversation.adjudicator import StructuredConversationAdjudicator
@@ -124,6 +126,7 @@ class ObservationResult:
     turn_id: str
     utterance_id: str
     state_context: str
+    text_edit: VoiceEditIntent | None = None
 
 
 class LiveConversationService:
@@ -315,6 +318,7 @@ class LiveConversationService:
         end_of_turn_confidence: float = 1.0,
         stt_uncertain: bool = False,
         expected_generation: int | None = None,
+        text_editor: TextEditor | None = None,
     ) -> ObservationResult:
         session = await self.ensure_session(session_id)
         transcript = transcript.strip()
@@ -443,6 +447,30 @@ class LiveConversationService:
                 reasons=["one_to_one_prior"],
             )
         session.last_speaker_estimate = estimate
+        # Branch before writing the observation or exposing the chat transcript.
+        editor_addressed = explicitly_addressed_to_iris or implicit_address
+        if (
+            text_editor is not None and not echo and not stt_uncertain
+            and end_of_turn_confidence >= .5 and speaker_role is not SpeakerRole.OTHER
+            and not addressed_to_other and not addressing.other_person
+            and not self._decision.is_self_talk(addressing_text)
+            and editor_addressed
+        ):
+            intent = await text_editor.voice_intent(addressing_text, followup_only=not editor_addressed)
+            if intent is not None:
+                async with session.lock:
+                    if generation == session.generation:
+                        session.phase = ConversationPhase.LISTENING
+                        session.last_human_activity_at = time.monotonic()
+                decision = self._decision._decision(
+                    ConversationAction.OBSERVE, DecisionReason.DIRECT_ADDRESS, 1.0, addressedness, 0.0, 0.0,
+                )
+                return ObservationResult(None, decision, generation, turn_id, utterance_id, "", text_edit=intent)
+            if generation != session.generation:
+                decision = self._decision._decision(
+                    ConversationAction.WAIT_MORE, DecisionReason.INCOMPLETE_TURN, 1.0, 0.0, 0.0, 0.0,
+                )
+                return ObservationResult(None, decision, generation, turn_id, utterance_id, "")
         significance = self._significance(transcript)
         metadata: dict[str, object] = {
             "speaker_role": speaker_role.value,

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Iterator
+from typing import Iterator, Literal, get_args
 
 from apps.backend.app.llm.models import (
     DEEPSEEK_FLASH_MODEL,
@@ -19,6 +19,9 @@ from apps.backend.app.llm.models import (
 
 _STORE_LOCKS_GUARD = Lock()
 _STORE_LOCKS: dict[str, RLock] = {}
+QuickTextAction = Literal["fix", "simplify", "translate", "shorten", "format"]
+QUICK_TEXT_ACTIONS = get_args(QuickTextAction)
+DEFAULT_QUICK_TEXT_ACTIONS: tuple[QuickTextAction, ...] = ("fix", "simplify", "translate")
 
 
 def _shared_store_lock(path: Path) -> RLock:
@@ -122,6 +125,9 @@ class RuntimeSettings:
     web_search_notifications_enabled: bool = False
     web_search_provider: str = "free"
     web_search_free_only: bool = True
+    text_editor_enabled: bool = False
+    text_editor_revision: int = 0
+    text_editor_quick_actions: list[QuickTextAction] = field(default_factory=lambda: list(DEFAULT_QUICK_TEXT_ACTIONS))
 
 
 class RuntimeSettingsStore:
@@ -159,6 +165,11 @@ class RuntimeSettingsStore:
             values["speech_discouraged_words"] = normalize_speech_words(
                 values.get("speech_discouraged_words", defaults.speech_discouraged_words)
             )
+            if "text_editor_quick_actions" in values:
+                actions = list(dict.fromkeys(
+                    action for action in values["text_editor_quick_actions"] if action in QUICK_TEXT_ACTIONS
+                ))
+                values["text_editor_quick_actions"] = actions or list(DEFAULT_QUICK_TEXT_ACTIONS)
             # V0.5 originally defaulted to ``ask`` but never surfaced a useful
             # confirmation prompt in the conversation.  Treat persisted values as
             # the new guided policy so existing local users receive the intended

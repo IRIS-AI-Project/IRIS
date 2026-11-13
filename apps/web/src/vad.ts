@@ -206,6 +206,8 @@ export class PcmInputClient {
       generation?: number;
       observation_only?: boolean;
       initiative?: boolean;
+      editor_intent?: import("./skills/api").VoiceEditIntent;
+      editor_revision?: number;
     }) => void,
   ) {}
   async connect(

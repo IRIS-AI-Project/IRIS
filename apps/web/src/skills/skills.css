@@ -1,0 +1,197 @@
+.skills-page {
+  container: skills / inline-size;
+  color: var(--color-text);
+}
+
+.skills-groups {
+  display: grid;
+  gap: clamp(20px, 3cqi, 30px);
+  padding: 12px 0 32px;
+}
+
+.skills-intro {
+  margin: 0;
+  padding: 14px var(--space-5);
+  border-radius: var(--radius-plate);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-card);
+  color: var(--color-text-soft);
+  font-size: .9rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.skills-group {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.skills-group h2,
+.skills-card h3 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 400;
+}
+
+.skills-group h2 {
+  font-size: 1.12rem;
+  text-wrap: balance;
+}
+
+/* Each row fills the workspace. Equal cards are the default; paired features use 2:1. */
+.skills-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.skills-row--lead {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.skills-card {
+  container: skill-card / inline-size;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: clamp(16px, 2.5cqi, 26px);
+  border-radius: var(--radius-card);
+  corner-shape: var(--corner-shape);
+  background: var(--surface-notification);
+  box-shadow: var(--shadow-surface);
+}
+
+.skills-card-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(90px, 36%, 172px);
+  align-items: center;
+  gap: 12px;
+  min-height: 112px;
+}
+
+.skills-card-copy { min-width: 0; }
+
+.skills-card h3 {
+  font-size: clamp(1.04rem, 3.7cqi, 1.38rem);
+  line-height: 1.25;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.skills-card p {
+  max-width: 42ch;
+  margin: 8px 0 0;
+  color: var(--color-text-soft);
+  font-size: .9rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.skills-card .skills-card-note {
+  max-width: 54ch;
+  color: var(--color-text-muted);
+  font-size: .8rem;
+}
+
+.skills-card-art {
+  --skill-art-back: color-mix(in oklch, var(--color-surface-soft) 76%, var(--color-accent-visual));
+  --skill-art-face: color-mix(in oklch, var(--color-text-muted) 58%, var(--color-surface-soft));
+  --skill-art-accent: var(--color-focus);
+  --skill-art-tip: var(--color-text-soft);
+  justify-self: end;
+  width: 100%;
+  pointer-events: none;
+}
+
+.skills-card-art :is(svg, img) {
+  display: block;
+  width: 100%;
+}
+
+.skills-card-art img {
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+}
+
+.skills-card-footer,
+.skills-card-actions,
+.skills-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.skills-card-footer {
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.skills-card-actions { margin-inline-start: auto; }
+
+.skills-page .skills-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 15px;
+  border-radius: var(--radius-control-sm);
+  corner-shape: var(--corner-shape);
+  font-size: .84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.skills-action svg { flex: none; }
+
+.skills-feedback {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: .86rem;
+}
+
+.skills-feedback p { margin: 0; }
+.skills-card .skills-error { color: var(--color-danger-text); font-size: .8rem; }
+
+.skills-quick { margin-block-start: 8px; }
+.skills-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: .88rem;
+}
+.skills-quick-actions legend { padding: 0; color: var(--color-text-soft); }
+.skills-quick-actions label { display: flex; align-items: center; gap: 7px; min-height: 44px; cursor: pointer; }
+
+@container skills (width < 660px) {
+  .skills-row {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container skill-card (width < 250px) {
+  .skills-card-main {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 4px;
+  }
+
+  .skills-card-art {
+    grid-row: 1;
+    justify-self: start;
+    width: 96px;
+  }
+
+  .skills-card-actions { margin-inline-start: 0; }
+}

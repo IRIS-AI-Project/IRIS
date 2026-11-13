@@ -1,0 +1,77 @@
+.desktop-quick {
+  padding-block-start: 2px;
+  color: var(--color-text);
+  font: 450 13px/1.45 var(--font-ui);
+}
+
+.desktop-quick-actions { display: grid; gap: 2px; }
+.desktop-quick-row { display: flex; gap: 4px; }
+
+.desktop-quick-output, .desktop-quick-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.desktop-quick-output, .desktop-quick-line { flex-wrap: wrap; }
+
+.desktop-quick-action {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: var(--radius-control);
+  corner-shape: var(--corner-shape);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.desktop-quick-glyph { display: grid; place-items: center; flex: 0 0 44px; }
+.desktop-quick-highlight {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background: rgb(225 221 239 / .1);
+  opacity: 0;
+  pointer-events: none;
+}
+.desktop-quick-caption {
+  width: 0;
+  overflow: hidden;
+  font-weight: 550;
+  font-size: 13px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.desktop-quick-caption > span { display: block; width: max-content; padding-inline-end: 12px; opacity: 0; }
+
+.desktop-quick .desktop-quick-icon {
+  flex: 0 0 44px;
+  background: transparent;
+}
+
+.desktop-quick-action[aria-disabled="true"] { opacity: .5; cursor: wait; }
+.desktop-quick-feedback { padding: 2px 0 0; }
+.desktop-quick-output { justify-content: flex-end; }
+.desktop-quick-feedback p { margin: 0; padding: 4px 8px; overflow-wrap: anywhere; }
+.desktop-quick-feedback p[role="alert"] { color: var(--color-danger-text); }
+.desktop-quick-line p { flex: 1 1 92px; }
+.desktop-quick-result {
+  max-block-size: 4.65em;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  white-space: pre-wrap;
+  user-select: text;
+  text-shadow: 0 1px 3px rgb(0 0 0 / .55);
+}
