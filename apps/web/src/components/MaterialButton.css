@@ -3,7 +3,8 @@
 .dp-lens .dp-depth, .dp-lens .dp-material { position: absolute; inset: 0; border-radius: inherit; corner-shape: inherit; pointer-events: none; }
 .dp-lens .dp-hover-surface { position: absolute; inset: 0; border-radius: inherit; corner-shape: inherit; pointer-events: none; }
 .dp-lens .dp-depth { box-shadow: var(--lens-depth); }
-.dp-lens .dp-material { container-type: size; container-name: lens-material; isolation: isolate; overflow: hidden; background: radial-gradient(ellipse at var(--dp-light-x, 50%) var(--dp-light-y, 42%), var(--dp-fill-tone) 0%, var(--dp-fill-tone) 28%, color-mix(in srgb, var(--dp-tone) var(--dp-edge-share, var(--lens-fill-edge-share)), black) 100%); }
+.dp-lens .dp-material { container-type: size; isolation: isolate; overflow: hidden; background: radial-gradient(ellipse at var(--dp-light-x, 50%) var(--dp-light-y, 42%), var(--dp-fill-tone) 0%, var(--dp-fill-tone) 28%, color-mix(in srgb, var(--dp-tone) var(--dp-edge-share, var(--lens-fill-edge-share)), black) 100%); }
+.dp-lens:not(:where(:is(button, .iris-button-group, .dp-joined-half, .avatar-placement-option):is(.dp-graphite, .dp-danger))) > .dp-hover-surface > .dp-material { container-name: lens-material; }
 .dp-lens .dp-inner-top, .dp-lens .dp-inner-bottom, .dp-lens .dp-inner-edge, .dp-lens .dp-bevel, .dp-lens .dp-noise { position: absolute; inset: 0; border-radius: inherit; corner-shape: inherit; pointer-events: none; }
 .dp-lens .dp-inner-top { mix-blend-mode: plus-lighter; opacity: calc(var(--lens-inner-top-alpha) * var(--dp-intensity)); box-shadow: inset 0 calc(var(--lens-inner-top-y) * var(--dp-effect-scale)) calc(var(--lens-inner-top-blur) * var(--dp-effect-scale)) calc(var(--lens-inner-top-spread) * var(--dp-effect-scale)) var(--dp-light-color); }
 .dp-lens .dp-inner-bottom { mix-blend-mode: plus-lighter; opacity: calc(var(--lens-inner-bottom-alpha) * var(--dp-intensity)); box-shadow: inset 0 calc(var(--lens-inner-bottom-y) * var(--dp-effect-scale)) calc(var(--lens-inner-bottom-blur) * var(--dp-effect-scale)) 0 var(--dp-light-color); }
@@ -13,7 +14,7 @@
   /* Paint the bright lip as a field clipped by the face, avoiding a second
      inset-shadow curve and its bright fragments at squircle corners. */
   background: linear-gradient(to bottom, rgb(255 255 255 / var(--lens-bevel-top)), transparent calc(5px * var(--dp-effect-scale))),
-    radial-gradient(ellipse at var(--dp-light-x, 50%) 0%, rgb(255 255 255 / .1), transparent 56%),
+    radial-gradient(ellipse at var(--dp-light-x, 50%) 0%, rgb(255 255 255 / .03), transparent 42%),
     linear-gradient(180deg, transparent 48%, rgb(0 0 0 / .12));
   box-shadow: inset 0 calc(-3px * var(--dp-effect-scale)) calc(4px * var(--dp-effect-scale)) rgb(0 0 0 / var(--lens-bevel-bottom)),
     inset calc(2px * var(--dp-effect-scale)) 0 calc(7px * var(--dp-effect-scale)) rgb(0 0 0 / var(--lens-bevel-side)),
@@ -23,15 +24,17 @@
 .dp-lens .dp-bevel { filter: blur(.35px); }
 .dp-lens .dp-material::after {
   content: ""; position: absolute; inset: 0; padding: 1px; border-radius: inherit; corner-shape: inherit;
-  background: radial-gradient(ellipse at var(--dp-light-x, 50%) 0%, rgb(255 255 255 / .44), rgb(255 255 255 / .1) 46%, transparent 78%);
+  background: radial-gradient(ellipse at var(--dp-light-x, 50%) 0%, rgb(255 255 255 / .2), rgb(255 255 255 / .05) 42%, transparent 70%);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   opacity: var(--dp-intensity);
 }
 .dp-lens .dp-bloom { position: absolute; left: var(--dp-bloom-x, 50%); bottom: calc(-32px * var(--dp-effect-scale)); width: min(var(--dp-bloom-width, 38%), 140px); height: calc(48px * var(--dp-effect-scale)); border-radius: 50%; background: color-mix(in srgb, var(--dp-tone) 55%, white); filter: blur(calc(var(--lens-bloom-blur) * .5 * var(--dp-effect-scale))); mix-blend-mode: plus-lighter; opacity: calc(var(--lens-bloom-alpha) * var(--dp-intensity)); transform: translateX(-50%); }
 .dp-lens .dp-noise { background: url("./lens-noise.svg") repeat; background-size: 128px 128px; background-position: var(--dp-noise-position, 0 0); mix-blend-mode: overlay; opacity: calc(var(--lens-noise-alpha) * var(--dp-intensity)); }
+:is(button, .iris-button-group, .avatar-placement-option).dp-lens.dp-graphite, :is(button, .iris-button-group, .avatar-placement-option).dp-lens.dp-graphite > .dp-hover-surface { --dp-tone: color-mix(in srgb, var(--lens-graphite) 93%, black); --dp-intensity: .94; --lens-bevel-top: .1; --lens-bloom-alpha: .22; }
 .dp-lens.dp-accent { --dp-tone: var(--lens-accent); color: var(--color-accent-ink); }
 .dp-lens.dp-danger { --dp-tone: var(--color-danger); --lens-fill-center-share: 86%; }
+:is(button, .iris-button-group, .dp-joined-half).dp-lens.dp-danger, :is(button, .iris-button-group, .dp-joined-half).dp-lens.dp-danger > .dp-hover-surface { --lens-bevel-top: .12; }
 .dp-lens.dp-warning { --dp-tone: var(--color-warning); }
 .dp-lens.dp-success { --dp-tone: var(--color-success); }
 .dp-lens .dp-hover-light { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; corner-shape: inherit; pointer-events: none; opacity: 0; mix-blend-mode: plus-lighter; }
@@ -114,12 +117,12 @@ button.iris-button[data-material]:not([data-material="plain"]):disabled { opacit
 .iris-button .dp-bevel, .iris-button .dp-bloom, .iris-button .dp-noise,
 .iris-button .dp-hover-light, .iris-button .dp-hover-spot, .iris-button > .dp-rim { display: block !important; }
 .iris-button[data-material="quiet"] > .dp-hover-surface { opacity: 0; }
-.iris-button[data-material-compact="true"] { --dp-effect-scale: .65; }
+.iris-button[data-material-compact="true"]:is(:not(button:is(.dp-graphite, .dp-danger)), [data-material-square="true"]) { --dp-effect-scale: .65; }
 .iris-button[data-material-square="true"] .dp-material,
 .iris-button[data-material-square="true"] .dp-hover-light { clip-path: url(#apple-squircle-square); }
-.iris-button[data-material-square="true"] .dp-depth { box-shadow: none; filter: drop-shadow(0 2px 1px rgb(0 0 0 / .3)) drop-shadow(0 6px 8px rgb(0 0 0 / .3)); }
+.iris-button[data-material-square="true"] .dp-depth { box-shadow: none; filter: var(--depth-control); }
 .iris-button[data-material-square="true"] .dp-depth::before { content: ""; position: absolute; inset: 0; background: var(--dp-tone); clip-path: url(#apple-squircle-square); }
-.iris-button-group { position: relative; border-radius: 33px; corner-shape: var(--corner-shape); --dp-effect-scale: .65; }
+.iris-button-group { position: relative; border-radius: 33px; corner-shape: var(--corner-shape); }
 .dock-dual-pill:has(.iris-button) { filter: none; }
 .dock-dual-pill > button.iris-button { border-radius: 33px; corner-shape: var(--corner-shape); }
 /* Muted overlays share the group's seed, texture position and moving surface. */
@@ -128,10 +131,19 @@ button.iris-button[data-material]:not([data-material="plain"]):disabled { opacit
 .iris-button-group .dp-joined-half[data-side="0"] { left: 0; }
 .iris-button-group .dp-joined-half[data-side="1"] { right: 0; }
 .iris-button-group .dp-joined-half .dp-material { clip-path: url(#apple-squircle-square); }
-.iris-button-group .dp-joined-half .dp-material::after { content: none; }
+
 .dock-dual-pill button.iris-button.is-muted { color: var(--color-text) !important; }
 .dock-finish-btn.iris-button { border-radius: 40.5px; corner-shape: var(--corner-shape); }
-.dock-new-dialog-btn.iris-button { border-radius: 33px; corner-shape: var(--corner-shape); }
+.dock-icon-btn.iris-button, .dock-new-dialog-btn.iris-button { border-radius: 33px; corner-shape: var(--corner-shape); }
+/* Align CSS border-radius curvature with the 60%-smoothed Apple squircle SVG clip-path
+   so the 1px top lip and corner bevels are not clipped at the corners. */
+@supports (corner-shape: superellipse(1.53)) {
+  :is(.iris-button[data-material-square="true"], .iris-button[data-material-contour]:not([data-material-contour="start"]), .dp-icon) > :is(.dp-hover-surface, .dp-rim),
+  .iris-button-group .dp-joined-half,
+  .dock-dual-pill > button.iris-button {
+    corner-shape: superellipse(1.53);
+  }
+}
 button.iris-button.is-muted { color: var(--color-danger) !important; }
 button.iris-button.is-loading { color: var(--color-text) !important; }
 button.iris-button.is-loading:disabled { opacity: 1 !important; }
@@ -155,7 +167,7 @@ button.iris-button.is-loading:disabled { opacity: 1 !important; }
 .iris-button .dp-depth, .iris-button .dp-material { opacity: 1; }
 .iris-button[data-material-contour] > .dp-hover-surface > .dp-material,
 .iris-button[data-material-contour] > .dp-hover-surface > .dp-hover-light { clip-path: var(--button-contour); }
-.iris-button[data-material-contour] > .dp-hover-surface > .dp-depth { box-shadow: none; filter: drop-shadow(0 2px 1px rgb(0 0 0 / .3)) drop-shadow(0 6px 8px rgb(0 0 0 / .3)); }
+.iris-button[data-material-contour] > .dp-hover-surface > .dp-depth { box-shadow: none; filter: var(--depth-control); }
 .iris-button[data-material-contour] > .dp-hover-surface > .dp-depth::before { content: ""; position: absolute; inset: 0; background: var(--dp-tone); clip-path: var(--button-contour); }
 
 @media (forced-colors: active) {

@@ -17,6 +17,7 @@ import { CustomSelect } from "../components/CustomSelect";
 import { useMaterialFeedback } from "./useMaterialFeedback";
 import { AppSwitch } from "../components/AppSwitch";
 import { AppCheckbox } from "../components/AppCheckbox";
+import { Disclosure } from "../components/Disclosure";
 import { SlidingSegments } from "../components/SlidingSegments";
 import { MaterialSeed, materialSeeds, materialStyle, maxSeed, readMaterialSeed, seedStorageKey, validSeed } from "./materialSeeds";
 import { ButtonMaterialLayers, MaterialButton } from "../components/MaterialButton";
@@ -35,6 +36,16 @@ const groups = [
 ] as const;
 const storageKey = "iris-design-pack-lens-v3";
 const legacyCompactStorageKey = "iris-design-pack-compact-v1";
+const seedGalleryMaterialKey = "design-pack.seed-gallery";
+const sections = [
+  ["buttons", "Кнопки"],
+  ["compact", "Иконки"],
+  ["controls", "Управление"],
+  ["fields", "Поля"],
+  ["notifications", "Уведомления"],
+  ["confirmations", "Подтверждения"],
+  ["seeds", "Материалы"],
+] as const;
 
 function readVotes(): Record<string, Vote> {
   try {
@@ -83,25 +94,66 @@ function Review({ id, votes, onVote }: {
   </div>;
 }
 
-function SwitchSample({ title }: { title: string }) {
-  const [checked, setChecked] = useState(true);
-  return <AppSwitch checked={checked} label={title} onChange={setChecked} />;
-}
-
 function ControlsSample() {
   const [tab, setTab] = useState("Диалог");
   const [volume, setVolume] = useState(65);
   const [notes, setNotes] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   return <div className="dp-control-set">
-    <SwitchSample title="Голосовой ответ" />
-    <div className="dp-slider-line"><label htmlFor="preview-volume">Громкость <span>{volume}%</span></label>
-      <input id="preview-volume" type="range" min="0" max="100" value={volume} onChange={(event) => setVolume(Number(event.target.value))} />
+    <div className="dp-example">
+      <h3>Голосовые настройки</h3>
+      <AppSwitch checked={voiceEnabled} label="Голосовой ответ" onChange={setVoiceEnabled} />
+      <div className="dp-slider-line"><label htmlFor="preview-volume">Громкость <span>{volume}%</span></label>
+        <input id="preview-volume" type="range" min="0" max="100" value={volume} disabled={!voiceEnabled}
+          onChange={(event) => setVolume(Number(event.target.value))} />
+      </div>
     </div>
-    <SlidingSegments value={tab} aria-label="Вид">
-      {["Диалог", "История", "Память"].map((name) => <button key={name} type="button"
-        aria-pressed={tab === name} onClick={() => setTab(name)}>{name}</button>)}
-    </SlidingSegments>
-    <label className="dp-checkbox-line"><AppCheckbox checked={notes} onChange={event => setNotes(event.target.checked)} />Личные заметки</label>
+    <div className="dp-example">
+      <h3>Вид рабочей области</h3>
+      <SlidingSegments value={tab} aria-label="Вид">
+        {["Диалог", "История", "Память"].map((name) => <button key={name} type="button"
+          aria-pressed={tab === name} onClick={() => setTab(name)}>{name}</button>)}
+      </SlidingSegments>
+    </div>
+    <div className="dp-example">
+      <h3>Что сохранить</h3>
+      <label className="dp-checkbox-line"><AppCheckbox checked={notes} onChange={event => setNotes(event.target.checked)} />Личные заметки</label>
+      <label className="dp-checkbox-line"><AppCheckbox checked disabled />Текст диалога</label>
+    </div>
+  </div>;
+}
+
+function CompactSamples() {
+  const selectedSeed = useContext(MaterialSeed);
+  const [page, setPage] = useState(2);
+  const [micMuted, setMicMuted] = useState(false);
+  const [soundMuted, setSoundMuted] = useState(false);
+  return <div className="dp-sample dp-example-list">
+    <div className="dp-example">
+      <h3>Листание записей <span>32 × 32 px</span></h3>
+      <div className="dp-action-row">
+        <LensButton icon className="dp-icon-small" aria-label="Назад" disabled={page === 1} onClick={() => setPage(page - 1)}><ChevronLeft size={16} /></LensButton>
+        <span className="dp-page-count" role="status" aria-label="Страница">{page} / 3</span>
+        <LensButton icon className="dp-icon-small" aria-label="Вперёд" disabled={page === 3} onClick={() => setPage(page + 1)}><ChevronRight size={16} /></LensButton>
+      </div>
+    </div>
+    <div className="dp-example">
+      <h3>Управление голосом <span>48 × 48 px</span></h3>
+      <div className="dp-action-row">
+        <LensButton icon tone={micMuted ? "danger" : "accent"} aria-label="Микрофон" aria-pressed={!micMuted}
+          onClick={() => setMicMuted(!micMuted)}><Mic size={19} /></LensButton>
+        <LensButton icon tone={soundMuted ? "danger" : "graphite"} aria-label="Наушники" aria-pressed={!soundMuted}
+          onClick={() => setSoundMuted(!soundMuted)}><Headphones size={19} /></LensButton>
+      </div>
+    </div>
+    <div className="dp-example">
+      <h3>Кнопки окна <span>48 × 48 px в макете</span></h3>
+      <div className="dp-action-row">{([
+        [Minus, "Свернуть", "success"], [Square, "Развернуть", "warning"], [X, "Закрыть", "danger"],
+      ] as const).map(([Symbol, label, tone]) => <MaterialButton key={tone} type="button"
+        materialKey={`WindowChrome.${tone}`} seed={selectedSeed ?? undefined} appearance="quiet"
+        tone={tone} className="dp-icon" aria-label={label}><Symbol size={18} aria-hidden="true" /></MaterialButton>)}</div>
+    </div>
   </div>;
 }
 
@@ -122,6 +174,7 @@ export function DesignPack() {
   const [voice, setVoice] = useState("iris");
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
   const [storageNotice, setStorageNotice] = useState("");
   const persist = (nextVotes: Record<string, Vote>) => {
     try { localStorage.setItem(storageKey, JSON.stringify(nextVotes)); setStorageNotice(""); }
@@ -153,71 +206,109 @@ export function DesignPack() {
     catch { setNotice(`Не удалось скопировать. ${summary.split("\n").join("; ")}`); }
   };
   return <MaterialSeed.Provider value={selectedSeed}><main className="dp-page">
-    <header className="dp-header"><a className="dp-brand" href="/" aria-label="Открыть Iris"><img src="/brand/iris-mark-backed-dark.svg" alt="" />Iris<span>Образцы дизайна</span></a></header>
+    <header className="dp-header">
+      <a className="dp-brand" href="/" aria-label="Открыть Iris"><img src="/brand/iris-mark-backed-dark.svg" alt="" />Iris</a>
+      <h1>Образцы дизайна</h1>
+      <p>Кнопки, поля и другие элементы Ирис. Попробуй их мышью или клавиатурой.</p>
+      <nav className="dp-nav" aria-label="Разделы макета">
+        {sections.map(([id, title]) => <a key={id} href={`#${id}`}>{title}</a>)}
+      </nav>
+    </header>
     <div className="dp-components">
-    <section className="dp-section" aria-labelledby="buttons-title">
+    <section id="buttons" className="dp-section" aria-labelledby="buttons-title">
       <div className="dp-section-heading"><div><h2 id="buttons-title">Кнопки действий</h2></div><Review id="buttons" {...reviewProps} /></div>
-      <div className="dp-sample">
-        <div className="dp-action-stack"><LensButton tone="accent" onClick={() => setNotice("Образец нажатия. Диалог не запускается.")}><Sparkles size={18} />Начать диалог</LensButton>
-          <div className="dp-action-row"><LensButton>Новый диалог</LensButton><LensButton tone="danger">Завершить</LensButton></div>
-          <div className="dp-disabled-row"><LensButton tone="accent" disabled>Недоступно</LensButton></div>
+      <div className="dp-sample dp-example-list">
+        <div className="dp-example">
+          <h3>Главное действие <span>58 px</span></h3>
+          <LensButton className="dp-action-large" tone="accent" onClick={() => setActionNotice("Выбрано «Начать диалог».")}><Sparkles size={18} />Начать диалог</LensButton>
         </div>
+        <div className="dp-example">
+          <h3>Действия в диалоге <span>46 px</span></h3>
+          <div className="dp-action-row">
+            <LensButton onClick={() => setActionNotice("Выбрано «Новый диалог».")}>Новый диалог</LensButton>
+            <LensButton tone="danger" onClick={() => setActionNotice("Выбрано «Завершить».")}>Завершить</LensButton>
+          </div>
+        </div>
+        <div className="dp-example">
+          <h3>Действия в списке <span>40 px</span></h3>
+          <div className="dp-action-row">
+            <LensButton className="dp-action-small" onClick={() => setActionNotice("Выбрано «Копировать».")}><Copy size={15} />Копировать</LensButton>
+            <LensButton className="dp-action-small" disabled>Недоступно</LensButton>
+          </div>
+        </div>
+        <p className="dp-action-result" role="status">{actionNotice || "Кнопки работают в пределах макета."}</p>
       </div>
     </section>
-    <section className="dp-section" aria-labelledby="compact-title">
+    <section id="compact" className="dp-section" aria-labelledby="compact-title">
       <div className="dp-section-heading"><div><h2 id="compact-title">Маленькие кнопки</h2></div><Review id="compact" {...reviewProps} /></div>
-      <div className="dp-sample">
-        <div className="dp-icons">{[[ChevronLeft, "Назад"], [ChevronRight, "Вперёд"]].map(([Icon, label]) => {
-          const Symbol = Icon as typeof ChevronLeft;
-          return <LensButton key={String(label)} icon aria-label={String(label)}><Symbol size={18} /></LensButton>;
-        })}{([
-          [Minus, "Свернуть", "success"], [Square, "Развернуть", "warning"], [X, "Закрыть", "danger"],
-        ] as const).map(([Symbol, label, tone]) => <MaterialButton key={tone} materialKey={`WindowChrome.${tone}`}
-          seed={selectedSeed ?? undefined} appearance="quiet" tone={tone} className="dp-icon" aria-label={label}><Symbol size={18} /></MaterialButton>)}</div><div className="dp-icons"><LensButton icon tone="accent" aria-label="Микрофон"><Mic size={19} /></LensButton>
-          <LensButton icon aria-label="Наушники"><Headphones size={19} /></LensButton></div>
-      </div>
+      <CompactSamples />
     </section>
-    <section className="dp-section" aria-labelledby="controls-title">
+    <section id="controls" className="dp-section" aria-labelledby="controls-title">
       <div className="dp-section-heading"><div><h2 id="controls-title">Переключатели и ползунок</h2></div><Review id="controls" {...reviewProps} /></div>
       <div className="dp-sample"><ControlsSample /></div>
     </section>
     </div>
+    <section id="fields" className="dp-section" aria-labelledby="fields-title">
+      <div className="dp-section-heading"><div><h2 id="fields-title">Световая обводка</h2></div><Review id="fields" {...reviewProps} /></div>
+      <div className="dp-live-fields">
+        <h3>Поля в диалоге</h3>
+        <div className="dp-three-up">
+          <label>Поиск<FieldSurface><Search size={18} /><input type="search" value={search} placeholder="Найти в истории" onChange={(event) => setSearch(event.target.value)} /></FieldSurface></label>
+          <label>Название<FieldSurface><input value={name} placeholder="Название диалога" onChange={(event) => setName(event.target.value)} /></FieldSurface></label>
+          <div>
+            <label htmlFor="preview-voice">Голос</label>
+            <FieldSurface>
+              <CustomSelect id="preview-voice" value={voice} onChange={(event) => setVoice(event.target.value)}>
+                <option value="iris">Iris · основной голос</option>
+                <option value="quiet">Iris · спокойный голос</option>
+              </CustomSelect>
+            </FieldSurface>
+          </div>
+        </div>
+        <label className="dp-message-label" htmlFor="preview-message">Сообщение</label>
+        <FieldSurface className="dp-message">
+          <textarea id="preview-message" rows={2} value={message} placeholder="Напиши Iris…" onChange={(event) => setMessage(event.target.value)} />
+          <button className="dp-send" type="button" aria-label="Отправить образец сообщения"
+            onClick={() => setNotice("Сообщение осталось в макете.")}><ArrowUp size={22} /></button>
+        </FieldSurface>
+        <div className="dp-two-up dp-extra-states">
+          <label>Недоступное поле<FieldSurface disabled><input placeholder="Недоступно" disabled /></FieldSurface></label>
+          <label>Ошибка<FieldSurface error><input aria-invalid="true" aria-describedby="preview-error" defaultValue="Неверное значение" /></FieldSurface>
+            <span id="preview-error" className="dp-error-text">Проверь значение</span>
+          </label>
+        </div>
+      </div>
+      <Disclosure materialKey="design-pack.field-states" label="Сравнить состояния полей" className="dp-disclosure">
+        <div className="dp-three-up">{[["", "Покой"], ["hover", "Наведение"], ["focus", "Активное поле"]].map(([state, title]) => <div className="dp-state" key={title}><h3>{title}</h3>
+          <FieldSurface pinned={state}><Search size={18} /><input aria-label={`Поиск — ${title}`} placeholder="Найти в истории" readOnly tabIndex={-1} /></FieldSurface>
+          <FieldSurface pinned={state}><input aria-label={`Поле — ${title}`} value={state === "focus" ? "Разговор с Iris" : ""} placeholder="Название диалога" readOnly tabIndex={-1} /></FieldSurface>
+          <FieldSurface pinned={state}><span className="dp-static-select">Iris · основной голос</span><ChevronRight className="dp-chevron" size={16} /></FieldSurface>
+        </div>)}</div>
+      </Disclosure>
+    </section>
     <NotificationExamples />
     <ConfirmationExamples renderReview={id => <Review id={id} {...reviewProps} />} />
-    <section className="dp-section dp-seed-section" aria-labelledby="seeds-title">
+    <section id="seeds" className="dp-section dp-seed-section" aria-labelledby="seeds-title">
       <div className="dp-section-heading"><div><h2 id="seeds-title">Вариации кнопки</h2></div></div>
-      <form className="dp-seed-toolbar" onSubmit={(event) => {
-        event.preventDefault();
-        const seed = Number(seedInput);
-        if (seedInput.trim() && validSeed(seed)) setGallerySeed(seed);
-      }}>
-        <label>Базовый сид<input type="number" min="0" max={maxSeed} step="1" required value={seedInput} onChange={(event) => setSeedInput(event.target.value)} /></label>
-        <LensButton type="submit">Показать варианты</LensButton>
-        <LensButton onClick={newSeeds}>Новые сиды</LensButton>
-        <button className="dp-seed-reset" type="button" onClick={() => chooseSeed(null)}>Исходный вид</button>
-      </form>
-      <div className="dp-seed-grid">{materialSeeds(gallerySeed).map((seed) => <article className="dp-seed-card" key={seed} data-selected={selectedSeed === seed}>
-        <div className="dp-seed-label"><h3>Сид {seed}</h3>{selectedSeed === seed && <span><Check size={14} />Выбран</span>}</div>
-        <LensButton tone="accent" seed={seed} onClick={() => setNotice(`Образец сида ${seed}. Диалог не запускается.`)}><Sparkles size={18} />Начать диалог</LensButton>
-        <div className="dp-seed-tones"><LensButton seed={seed}>Новый диалог</LensButton><LensButton seed={seed} tone="danger">Завершить</LensButton></div>
-        <button className="dp-seed-use" type="button" aria-label={`Использовать сид ${seed}`} aria-pressed={selectedSeed === seed} onClick={() => chooseSeed(seed)}>Использовать</button>
-      </article>)}</div>
+      <Disclosure materialKey={seedGalleryMaterialKey} label="Сравнить материалы">
+        <form className="dp-seed-toolbar" onSubmit={(event) => {
+          event.preventDefault();
+          const seed = Number(seedInput);
+          if (seedInput.trim() && validSeed(seed)) setGallerySeed(seed);
+        }}>
+          <label>Базовый сид<input type="number" min="0" max={maxSeed} step="1" required value={seedInput} onChange={(event) => setSeedInput(event.target.value)} /></label>
+          <MaterialButton materialKey={seedGalleryMaterialKey} className="dp-seed-action" type="submit">Показать варианты</MaterialButton>
+          <MaterialButton materialKey={seedGalleryMaterialKey} className="dp-seed-action" type="button" onClick={newSeeds}>Новые сиды</MaterialButton>
+          <button className="dp-seed-reset" type="button" onClick={() => chooseSeed(null)}>Исходный вид</button>
+        </form>
+        <div className="dp-seed-grid">{materialSeeds(gallerySeed).map((seed) => <article className="dp-seed-card" key={seed} data-selected={selectedSeed === seed}>
+          <div className="dp-seed-label"><h3>Сид {seed}</h3>{selectedSeed === seed && <span><Check size={14} />Выбран</span>}</div>
+          <LensButton tone="accent" seed={seed} onClick={() => setNotice(`Образец сида ${seed}. Диалог не запускается.`)}><Sparkles size={18} />Начать диалог</LensButton>
+          <div className="dp-seed-tones"><LensButton seed={seed}>Новый диалог</LensButton><LensButton seed={seed} tone="danger">Завершить</LensButton></div>
+          <button className="dp-seed-use" type="button" aria-label={`Использовать сид ${seed}`} aria-pressed={selectedSeed === seed} onClick={() => chooseSeed(seed)}>Использовать</button>
+        </article>)}</div>
+      </Disclosure>
       {selectedSeed !== null && <p className="dp-seed-current" role="status">Сид {selectedSeed}</p>}
-    </section>
-    <section className="dp-section" aria-labelledby="fields-title">
-      <div className="dp-section-heading"><div><h2 id="fields-title">Световая обводка</h2></div><Review id="fields" {...reviewProps} /></div>
-      <div className="dp-three-up">{[["", "Покой"], ["hover", "Наведение"], ["focus", "Активное поле"]].map(([state, title]) => <div className="dp-state" key={title}><h3>{title}</h3>
-        <FieldSurface pinned={state}><Search size={18} /><input aria-label={`Поиск — ${title}`} placeholder="Найти в истории" readOnly tabIndex={-1} /></FieldSurface>
-        <FieldSurface pinned={state}><input aria-label={`Поле — ${title}`} value={state === "focus" ? "Разговор с Iris" : ""} placeholder="Название диалога" readOnly tabIndex={-1} /></FieldSurface>
-        <FieldSurface pinned={state}><span className="dp-static-select">Iris · основной голос</span><ChevronRight className="dp-chevron" size={16} /></FieldSurface>
-      </div>)}</div>
-      <div className="dp-live-fields"><h3>Попробуй сам</h3><div className="dp-three-up">
-        <label>Поиск<FieldSurface><Search size={18} /><input type="search" value={search} placeholder="Найти в истории" onChange={(event) => setSearch(event.target.value)} /></FieldSurface></label>
-        <label>Название<FieldSurface><input value={name} placeholder="Название диалога" onChange={(event) => setName(event.target.value)} /></FieldSurface></label>
-        <div><label htmlFor="preview-voice">Голос</label><FieldSurface><CustomSelect id="preview-voice" value={voice} onChange={(event) => setVoice(event.target.value)}><option value="iris">Iris · основной голос</option><option value="quiet">Iris · спокойный голос</option></CustomSelect></FieldSurface></div>
-      </div><label className="dp-message-label">Сообщение<FieldSurface className="dp-message"><textarea aria-label="Сообщение" rows={2} value={message} placeholder="Напиши Iris…" onChange={(event) => setMessage(event.target.value)} /><button className="dp-send" type="button" aria-label="Отправить образец сообщения" onClick={() => setNotice("Это образец поля: сообщение никуда не отправляется.")}><ArrowUp size={22} /></button></FieldSurface></label>
-      <div className="dp-two-up dp-extra-states"><label>Недоступное поле<FieldSurface disabled><input placeholder="Недоступно" disabled /></FieldSurface></label><label>Ошибка<FieldSurface error><input aria-invalid="true" aria-describedby="preview-error" defaultValue="Неверное значение" /></FieldSurface><span id="preview-error" className="dp-error-text">Проверь значение</span></label></div>
-      </div>
     </section>
     <footer className="dp-footer"><LensButton onClick={() => void copy()}><Copy size={16} />Скопировать выбор</LensButton></footer>
     {(notice || storageNotice) && <p className="dp-notice" role="status">{notice || storageNotice}</p>}

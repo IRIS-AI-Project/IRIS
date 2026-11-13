@@ -17,7 +17,7 @@ export function NotificationExamples() {
   const timed: AppNotification = { id: "preview.saved", type: "success", title: "Настройки сохранены",
     message: "Изменения применены", duration: 9000, details: "Образец подробностей уведомления.", createdAt: 0,
     actions: [{ label: "Понятно", variant: "primary", onClick: () => {} }] };
-  return <section className="dp-section dp-notification-examples" aria-labelledby="notifications-title">
+  return <section id="notifications" className="dp-section dp-notification-examples" aria-labelledby="notifications-title">
     <div className="dp-section-heading"><h2 id="notifications-title">Уведомления</h2></div>
     <div className="dp-sample">
       <div className="dp-notification-tools">

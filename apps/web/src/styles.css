@@ -5634,45 +5634,48 @@ body {
   font-weight: 650;
 }
 
-.avatar-placement label {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  min-height: 64px;
-  padding: 12px;
-  border-radius: 14px;
-  corner-shape: squircle;
-  background: var(--color-surface-raised);
+.avatar-placement label.avatar-placement-option {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 92px;
+  padding: 16px 18px;
+  border-radius: var(--radius-plate);
+  corner-shape: var(--corner-shape);
+  background: transparent;
+  box-shadow: none;
+  border: 0;
   cursor: pointer;
   transition: none;
+  user-select: none;
 }
 
-.avatar-placement label:hover {
-  background: var(--color-surface-soft);
-  transform: translateX(2px);
+.avatar-placement-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 
-.avatar-placement label:has(input:checked) {
-  box-shadow: 0 0 0 2px var(--color-accent-border) inset;
-  background: var(--color-accent-soft);
-  transform: translateX(2px);
-}
-
-.avatar-placement label span {
-  display: grid;
-  gap: 3px;
-}
-
-.avatar-placement label strong {
+.avatar-placement-copy strong {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
-.avatar-placement label small {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.4;
+.avatar-placement-copy small {
+  color: var(--color-text-soft);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 .avatar-summary-grid {
@@ -11527,31 +11530,71 @@ button.danger-button:not(.secondary):active:not(:disabled) {
 
 .avatar-placement-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.avatar-placement-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: var(--radius-plate, 26px);
-  corner-shape: squircle;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.005) 100%), var(--color-base-deep);
-  border: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 2px 6px rgba(0, 0, 0, 0.2);
+.settings-card label.avatar-placement-option {
+  position: relative;
+  isolation: isolate;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  min-height: 92px;
+  padding: 16px 18px !important;
+  border-radius: var(--radius-plate, 26px) !important;
+  corner-shape: var(--corner-shape);
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
   cursor: pointer;
   transition: none;
+  user-select: none;
 }
 
-.avatar-placement-option:hover {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.015) 100%), var(--color-surface);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 4px 10px rgba(0, 0, 0, 0.28);
+.avatar-placement-option > .dp-hover-surface {
+  z-index: -1;
+}
+
+.avatar-placement-option.dp-accent,
+.avatar-placement-option.dp-accent strong {
+  color: var(--color-accent-ink) !important;
+}
+
+.avatar-placement-option.dp-accent small {
+  color: color-mix(in srgb, var(--color-accent-ink) 82%, transparent) !important;
+}
+
+.avatar-placement-input {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.avatar-placement-option:has(.avatar-placement-input:focus-visible) > .dp-rim {
+  opacity: 1 !important;
+}
+
+.avatar-placement:disabled .avatar-placement-option,
+.avatar-placement-option.is-disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.avatar-options {
+  display: grid;
+  gap: 10px;
 }
 
 .settings-panel .avatar-summary-grid:not([hidden]),

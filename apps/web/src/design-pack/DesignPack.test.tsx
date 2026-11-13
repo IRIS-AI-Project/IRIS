@@ -36,12 +36,14 @@ describe("design pack interaction contract", () => {
     const { unmount } = render(<DesignPack />);
     const section = screen.getByRole("region", { name: "Кнопки действий" });
     fireEvent.click(within(section).getByRole("button", { name: "Нравится" }));
+    fireEvent.click(screen.getByRole("button", { name: "Сравнить материалы" }));
     fireEvent.click(screen.getByRole("button", { name: "Использовать сид 42" }));
     expect(within(section).getAllByRole("button", { name: "Начать диалог" })[0]).toHaveAttribute("data-material-seed", "42");
     expect(within(section).getByRole("button", { name: "Нравится" })).toHaveAttribute("aria-pressed", "false");
     expect(localStorage.getItem(seedStorageKey)).toBe("42");
     unmount();
     render(<DesignPack />);
+    fireEvent.click(screen.getByRole("button", { name: "Сравнить материалы" }));
     expect(screen.getByRole("button", { name: "Использовать сид 42" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Исходный вид" }));
     expect(within(screen.getByRole("region", { name: "Кнопки действий" })).getAllByRole("button", { name: "Начать диалог" })[0]).not.toHaveAttribute("data-material-seed");

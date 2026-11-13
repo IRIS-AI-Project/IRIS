@@ -33,7 +33,7 @@ function ConfirmationSample({ id, solidCancel, label, review }: { id: string; so
           <MaterialButton materialKey={`${id}.new`} tone="danger" className="dp-confirmation-action"
             onClick={() => setResult("Новый диалог выбран.")}>Новый диалог</MaterialButton>
         </div>
-        <ConfirmationRim cardRef={cardRef} seed={seed} />
+        <ConfirmationRim cardRef={cardRef} seed={seed} active={false} />
       </div> : <div className="dp-confirmation-result">
         <p role="status">{result}</p>
         <MaterialButton materialKey={`${id}.restore`} appearance="quiet" onClick={() => setResult(null)}>Показать снова</MaterialButton>
@@ -43,7 +43,7 @@ function ConfirmationSample({ id, solidCancel, label, review }: { id: string; so
 }
 
 export function ConfirmationExamples({ renderReview }: { renderReview: (id: string) => ReactNode }) {
-  return <section className="dp-section dp-confirmation-examples" aria-labelledby="confirmations-title">
+  return <section id="confirmations" className="dp-section dp-confirmation-examples" aria-labelledby="confirmations-title">
     <div className="dp-section-heading"><h2 id="confirmations-title">Подтверждения</h2></div>
     <div className="dp-two-up">
       <ConfirmationSample id="confirmation-calm" label="Лёгкая отмена" review={renderReview("confirmation-calm")} />
