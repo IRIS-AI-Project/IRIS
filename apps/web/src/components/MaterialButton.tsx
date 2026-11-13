@@ -24,7 +24,7 @@ export function ButtonMaterialLayers({ children }: { children?: ReactNode } = {}
     <span className="dp-hover-surface" aria-hidden="true">
       <span className="dp-depth" />
       <MaterialFace />{children}
-      <span className="dp-hover-light"><span className="dp-hover-spot" /><span className="dp-hover-sheen" /></span>
+      <span className="dp-hover-light"><span className="dp-hover-spot" /></span>
     </span>
     <span className="dp-rim" aria-hidden="true" />
   </>;

@@ -16,7 +16,6 @@ export function useMaterialFeedback(
     const light = element.querySelector<HTMLElement>(".dp-hover-light");
     const surface = element.querySelector<HTMLElement>(".dp-hover-surface");
     const spot = element.querySelector<HTMLElement>(".dp-hover-spot");
-    const sheen = element.querySelector<HTMLElement>(".dp-hover-sheen");
     if (!rim && !light && !surface) return;
     if (disabled) {
       element.dataset.rimVisible = "false";
@@ -55,7 +54,6 @@ export function useMaterialFeedback(
     let cursorX = 0;
     let cursorY = 0;
     let compactShape: boolean | undefined;
-    let lastSheen = -Infinity;
 
     const resetMotion = () => {
       cancelAnimationFrame(frame);
@@ -135,20 +133,6 @@ export function useMaterialFeedback(
       bounds = undefined;
       move(event);
       update();
-      // A brief grazing reflection gives the material life without moving labels.
-      if (sheen && !field && !reduced && performance.now() - lastSheen > 900) {
-        lastSheen = performance.now();
-        running.get(sheen)?.cancel();
-        const direction = character > .5 ? 1 : -1;
-        // Reuse the button's seed, keeping each reflection stable across hovers.
-        sheen.style.setProperty("--dp-sheen-angle", `${106 + fluidity * 10}deg`);
-        sheen.style.setProperty("--dp-sheen-spread", `${17 + spread * 3}%`);
-        running.set(sheen, animate(sheen, {
-          translateX: [`${-110 * direction}%`, `${110 * direction}%`],
-          opacity: [0, .39 + character * .07, 0],
-          duration: Math.round(340 + fluidity * 100), ease: "outQuad",
-        }));
-      }
     };
     const leave = () => { hovered = false; resetMotion(); restore(); update(); };
     const focus = (event: FocusEvent) => {
@@ -178,7 +162,6 @@ export function useMaterialFeedback(
       reduced = prefersReducedMotion();
       resetMotion();
       if (reduced) {
-        if (sheen) { running.get(sheen)?.cancel(); sheen.style.opacity = "0"; }
         faceMotion?.revert();
         lightMotion?.revert();
         faceMotion = undefined;

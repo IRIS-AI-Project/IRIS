@@ -101,9 +101,9 @@
   --color-dock-control: #2b2e33;
   --color-dock-control-hover: #363940;
   --depth-dock: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.18)) drop-shadow(0 12px 26px rgba(0, 0, 0, 0.26));
-  --depth-control: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.18)) drop-shadow(0 6px 11px rgba(0, 0, 0, 0.16));
-  --depth-control-hover: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.2)) drop-shadow(0 8px 13px rgba(0, 0, 0, 0.19));
-  --depth-control-pressed: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+  --depth-control: drop-shadow(0 1px 2px rgb(0 0 0 / .22)) drop-shadow(1px 3px 5px rgb(0 0 0 / .13)) drop-shadow(0 6px 10px rgb(0 0 0 / .1));
+  --depth-control-hover: drop-shadow(0 1px 2px rgb(0 0 0 / .24)) drop-shadow(1px 4px 6px rgb(0 0 0 / .14)) drop-shadow(0 8px 12px rgb(0 0 0 / .11));
+  --depth-control-pressed: drop-shadow(0 1px 2px rgb(0 0 0 / .2)) drop-shadow(0 2px 4px rgb(0 0 0 / .1));
   --depth-composer: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.16)) drop-shadow(0 9px 18px rgba(0, 0, 0, 0.22));
   /* Match the settings backing's rendered tones without stacking extra white light. */
   --color-graphite-top: #222327;
@@ -158,7 +158,7 @@
   --radius-sm: 22px;
   --radius-control-sm: 22px;
   --radius-control: 24px;
-  --radius-plate: 26px;
+  --radius-plate: 28px;
   --radius-md: 32px;
   --radius-card: 40px;
   --radius-shell: 46px;
@@ -201,7 +201,12 @@
   --lens-bevel-top: .22;
   --lens-bevel-bottom: .38;
   --lens-bevel-side: .18;
-  --lens-depth: 0 3px 0 -1px rgb(0 0 0 / .35), 0 8px 12px -3px rgb(0 0 0 / .38), 0 18px 26px -7px rgb(0 0 0 / .25);
+  /* A soft contact, side penumbra and diffuse falloff seat controls in graphite.
+     Seeds vary only the depth; the shared shadow keeps the same character. */
+  --lens-depth:
+    0 2px 4px -1px rgb(0 0 0 / .24),
+    1px 5px 12px -4px rgb(0 0 0 / .25),
+    0 10px 24px -8px rgb(0 0 0 / .2);
   --rim-width: 3px;
   --rim-light-start: #ddc8fa;
   --rim-light-mid: #ad89de;

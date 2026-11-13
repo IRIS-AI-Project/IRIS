@@ -142,22 +142,18 @@ it("keeps hover feedback when an open disclosure returns to its quiet state unde
   expect(feedback.transitions.filter(change => change.target === face).slice(-1)[0]?.values).toMatchObject({ opacity: 0 });
 });
 
-it("keeps a restrained reflection stable for the same button seed across remounts", () => {
-  const reflection = (seed: number) => {
-    const view = render(<MaterialButton materialKey="reflection.test" seed={seed}>Кнопка</MaterialButton>);
-    const element = button();
+it("keeps cursor lighting without launching a sweeping reflection on repeated hovers", () => {
+  render(<MaterialButton materialKey="reflection.test">Кнопка</MaterialButton>);
+  const element = button();
+  for (let index = 0; index < 2; index++) {
     pointer(element, "pointerenter");
-    const sheen = element.querySelector<HTMLElement>(".dp-hover-sheen")!;
-    const changes = feedback.transitions.filter(change => change.target === sheen);
-    const values = changes[changes.length - 1].values;
-    const result = { values, angle: sheen.style.getPropertyValue("--dp-sheen-angle"), spread: sheen.style.getPropertyValue("--dp-sheen-spread") };
-    expect((values.opacity as number[])[1]).toBeLessThan(.5);
-    view.unmount();
-    return result;
-  };
-  const first = reflection(42);
-  expect(reflection(42)).toEqual(first);
-  expect(reflection(73)).not.toEqual(first);
+    vi.advanceTimersByTime(20);
+    expect(element.querySelector(".dp-hover-sheen")).toBeNull();
+    expect(feedback.transitions.some(change => "translateX" in change.values)).toBe(false);
+    expect(feedback.motions.find(motion => motion.target === element.querySelector(".dp-hover-spot"))?.x).toHaveBeenCalled();
+    fireEvent.pointerLeave(element);
+    vi.advanceTimersByTime(1000);
+  }
 });
 
 it("keeps a fixed surface aligned on hover and press while its light follows the pointer", () => {

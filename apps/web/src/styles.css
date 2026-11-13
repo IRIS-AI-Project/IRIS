@@ -217,6 +217,8 @@ select { appearance: auto; }
   width: 144px;
   height: 61px;
   isolation: isolate;
+  transform: scale(1.1);
+  transform-origin: top left;
 }
 .brand-lockup-wordmark {
   position: relative;

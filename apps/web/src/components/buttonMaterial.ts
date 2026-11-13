@@ -26,7 +26,7 @@ export function materialStyle(seed: number, variation = 1): CSSProperties {
     "--lens-bevel-bottom": range(.24, .48),
     "--lens-bevel-side": range(.12, .28),
     "--dp-noise-position": `${range(0, 128)}px ${range(0, 128)}px`,
-    "--lens-depth": `0 ${3 * depth}px 0 -1px rgb(0 0 0 / .35), 0 ${8 * depth}px ${12 * depth}px -3px rgb(0 0 0 / .38), 0 ${18 * depth}px ${26 * depth}px -7px rgb(0 0 0 / .25)`,
+    "--lens-depth": `0 ${2 * depth}px ${4 * depth}px -1px rgb(0 0 0 / .24), 1px ${5 * depth}px ${12 * depth}px -4px rgb(0 0 0 / .25), 0 ${10 * depth}px ${24 * depth}px -8px rgb(0 0 0 / .2)`,
   } as CSSProperties;
 }
 
