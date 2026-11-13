@@ -44,6 +44,7 @@
   user-select: none;
   opacity: 0;
 }
+.startup-screen[data-status="closing"] .startup-flora { opacity: 1; }
 .startup-flora picture { display: block; opacity: 0.58; }
 .startup-flora img { display: block; width: 100%; height: auto; transform-origin: 50% 92%; }
 .startup-flora-left { left: clamp(-56px, -2vw, -8px); }

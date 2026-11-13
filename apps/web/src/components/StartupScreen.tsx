@@ -56,12 +56,13 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
   const [gameOpen, setGameOpen] = useState(false);
   const [flora, setFlora] = useState<{ left: string; right: string; leftCompact: string; rightCompact: string; topRight: string } | null>(null);
   const failed = status === "failed" || status === "crashed";
-  const canReveal = !failed && revealed < stage;
+  const closing = status === "closing";
+  const canReveal = !failed && !closing && revealed < stage;
   const canFinish = status === "ready" && stage === 3 && revealed === 3;
   const revealingInterface = finishPhase === "revealing";
   // Keep the game available through the final logo transition. The screen
   // itself unmounts when the app is ready to appear.
-  const gameAvailable = !failed && status !== "closing";
+  const gameAvailable = !failed && !closing;
   const startupProgress = progress ?? getStartupProgress(status, null, status === "ready" && stage < 3, null, status === "ready" && stage === 3);
 
   useEffect(() => {
@@ -79,7 +80,7 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
 
   useEffect(() => {
     const root = screenRef.current;
-    if (!root || isTestEnvironment()) return;
+    if (closing || !root || isTestEnvironment()) return;
     const reduced = prefersReducedMotion();
     const reveal = root.querySelector("[data-letter-reveal]")!;
     const timeline = createTimeline();
@@ -91,10 +92,10 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
         duration: reduced ? 160 : 800, ease: "outCubic" }, reduced ? 0 : 300 + index * 140);
     });
     return () => { timeline.cancel(); };
-  }, []);
+  }, [closing]);
 
   useEffect(() => {
-    if (!flora || isTestEnvironment()) return;
+    if (closing || !flora || isTestEnvironment()) return;
     const root = screenRef.current;
     if (!root) return;
     const reduced = prefersReducedMotion();
@@ -112,7 +113,7 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
       }));
     });
     return () => { timeline.cancel(); sway.forEach((animation) => animation.cancel()); };
-  }, [flora]);
+  }, [closing, flora]);
 
   // Advance one contour at a time, even when a warm startup reports all stages
   // in the same frame. A slower stage holds the assembled petals in place.
@@ -272,7 +273,7 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
   }, [canFinish, finishPhase, revealTarget]);
 
   useEffect(() => {
-    if (isTestEnvironment()) return;
+    if (closing || isTestEnvironment()) return;
     const copy = screenRef.current?.querySelector(".startup-copy");
     if (!copy || revealingInterface) return;
     const reduced = prefersReducedMotion();
@@ -281,12 +282,12 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
       onComplete: () => { (copy as HTMLElement).style.filter = ""; },
     });
     return () => { animation.cancel(); };
-  }, [status, customTitle, canFinish, revealingInterface]);
+  }, [status, customTitle, canFinish, revealingInterface, closing]);
 
   const copy = STATUS_COPY[status];
-  const waiting = !failed && status !== "closing" && !canFinish;
+  const waiting = !failed && !closing && !canFinish;
   return (
-    <div className="startup-screen" ref={screenRef} data-stage={stage} data-revealed={revealed} data-phase={finishPhase}>
+    <div className="startup-screen" ref={screenRef} data-status={status} data-stage={stage} data-revealed={revealed} data-phase={finishPhase}>
       <div className="startup-flora startup-flora-left" aria-hidden="true">
         {flora && <picture><source media="(max-width: 700px)" srcSet={flora.leftCompact} /><img src={flora.left} alt="" /></picture>}
       </div>
@@ -298,12 +299,12 @@ export function StartupScreen({ status, stage = status === "ready" || status ===
       </div>
       <WindowChrome title="" compact onClose={onClose} />
       <main className={`startup-content is-${status}`}>
-        <div className="startup-mark"><IrisPetals unfolding withWordmark withSilhouettes={!failed} idlePetals={failed || canFinish ? 0 : revealed} settling={canFinish} /></div>
+        <div className="startup-mark"><IrisPetals unfolding={!closing} withWordmark withSilhouettes={!failed && !closing} idlePetals={failed || closing || canFinish ? 0 : revealed} settling={canFinish} /></div>
         <div className="startup-copy" role="status" aria-live="polite" aria-atomic="true">
           <h1>{customTitle || (waiting ? "Запускаю Iris" : copy.title)}</h1>
           <p>{subdetail || (waiting ? startupProgress.detail : copy.detail)}</p>
         </div>
-        {status !== "closing" && <StartupProgress progress={startupProgress} />}
+        {!closing && <StartupProgress progress={startupProgress} />}
         {failed && (<>
           <MaterialButton materialKey="StartupScreen.retry" className="primary-button" type="button" onClick={onRetry} disabled={retrying}>
             <IconInterfaceSpirals size={17} aria-hidden="true" />

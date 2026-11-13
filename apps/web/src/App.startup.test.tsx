@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReadinessResponse } from "./types";
 
-const runtime = vi.hoisted(() => ({ readiness: vi.fn() }));
+const runtime = vi.hoisted(() => ({
+  readiness: vi.fn(),
+  listenForClose: vi.fn(async (_listener: () => void) => () => {}),
+  shutdown: vi.fn<() => Promise<void>>(),
+}));
 vi.mock("./api", async (original) => ({
   ...await original<typeof import("./api")>(),
   isDesktopManaged: () => true,
@@ -22,11 +26,33 @@ vi.mock("./desktop", async (original) => ({
   getAvatarHostStatus: vi.fn().mockResolvedValue({ placement: "desktop_overlay", visible: false, phase: "disabled" }),
   listenForCoreStatus: async () => () => {},
   listenForAvatarStatus: async () => () => {},
+  listenForAppCloseRequest: runtime.listenForClose,
+  startGracefulShutdown: runtime.shutdown,
 }));
 import App from "./App";
 import { notificationStore, notify } from "./notifications";
 
 afterEach(() => { cleanup(); notify.dismissAll(); vi.unstubAllGlobals(); });
+
+it("mounts the complete closing screen before requesting native shutdown", async () => {
+  vi.stubGlobal("WebSocket", class { close() {} });
+  runtime.readiness.mockResolvedValue({ phase: "starting", text_chat: "loading", stt: "loading",
+    tts: "loading", vad: "ready", live_ready: false, errors: [] });
+  const { container } = render(<App />);
+  runtime.shutdown.mockImplementation(async () => {
+    expect(screen.getByRole("heading", { name: "Завершаю работу" })).toBeInTheDocument();
+    const logo = container.querySelector(".startup-mark");
+    expect(logo?.querySelectorAll("[data-petal]:not([style])")).toHaveLength(3);
+    expect(logo?.querySelector("[data-letter-reveal]")).toHaveAttribute("x1", "344");
+  });
+  const [requestClose] = runtime.listenForClose.mock.lastCall!;
+  await act(async () => {
+    requestClose();
+    expect(runtime.shutdown).not.toHaveBeenCalled();
+  });
+  act(requestClose);
+  expect(runtime.shutdown).toHaveBeenCalledOnce();
+});
 
 describe("desktop startup integration", () => {
   it("keeps the loading screen until model and voice readiness, then reveals the mounted shell", async () => {

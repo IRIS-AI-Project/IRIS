@@ -245,8 +245,11 @@ function MainApp() {
   const handleAppClose = useCallback(() => {
     if (settingsDraftRef.current) { setConfirmDiscardSettings(true); return; }
     setIsClosing(true);
-    void startGracefulShutdown();
   }, []);
+
+  useEffect(() => {
+    if (isClosing) void startGracefulShutdown();
+  }, [isClosing]);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -700,10 +703,6 @@ function MainApp() {
     };
   }, [refreshEvents, servicesReady]);
 
-  if (isClosing) {
-    return <StartupScreen key="closing" status="closing" onClose={handleAppClose} />;
-  }
-
   const closeNavigation = () => {
     setNavigationOpen((current) => {
       if (current) window.setTimeout(() => menuToggleRef.current?.focus(), 0);
@@ -732,7 +731,11 @@ function MainApp() {
     memory: () => switchView("memory"),
     plans: () => { setMemoryFocus({ id: "", section: "commitments", query: "", requestId: crypto.randomUUID() }); switchView("memory"); },
     sidebar: () => setSidebarCollapsed(current => !current),
-  }, !showStartup && !setupOpen);
+  }, !isClosing && !showStartup && !setupOpen);
+  if (isClosing) {
+    return <StartupScreen key="closing" status="closing" onClose={handleAppClose} />;
+  }
+
   return (
     <>
     {(!showStartup || (startupReady && startupRevealRequested)) && (
@@ -884,7 +887,7 @@ function MainApp() {
         <FirstConversationSetup open={setupOpen} settings={settings} onSettingsChanged={setSettings} onClose={() => setSetupOpen(false)} onStart={() => switchView("chat")} />
         <AppDialog open={confirmDiscardSettings} title="Есть несохранённые настройки" description="Город, словарь или новый API-ключ ещё не сохранены. Можно вернуться к настройкам или закрыть Iris без сохранения черновиков." onClose={() => setConfirmDiscardSettings(false)} variant="warning">
           <MaterialButton materialKey="settings.close.keep-drafts" className="secondary" onClick={() => { setConfirmDiscardSettings(false); switchView("settings"); }}>Вернуться к настройкам</MaterialButton>
-          <MaterialButton materialKey="settings.close.discard-drafts" className="danger-button" onClick={() => { settingsDraftRef.current = false; setHasSettingsDraft(false); setConfirmDiscardSettings(false); setIsClosing(true); void startGracefulShutdown(); }}>Закрыть без сохранения</MaterialButton>
+          <MaterialButton materialKey="settings.close.discard-drafts" className="danger-button" onClick={() => { handleSettingsDraft(false); setConfirmDiscardSettings(false); handleAppClose(); }}>Закрыть без сохранения</MaterialButton>
         </AppDialog>
         <NotificationHost pinnedContentRef={backgroundConversationRef} onNavigate={(view) => { if (view === "changelog") handleOpenChangelog(); else if (view === "reminders") { setMemoryFocus({ id: "", section: "commitments", query: "", requestId: crypto.randomUUID() }); switchView("memory"); } else switchView(view as AppView); }} />
       </section>

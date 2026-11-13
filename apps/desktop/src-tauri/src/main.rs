@@ -60,6 +60,7 @@ const CORE_STARTUP_DELAY: Duration = Duration::from_millis(150);
 // healthy graceful shutdown while the backend is still flushing state.
 const CORE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(7);
 const CORE_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(40);
+const CLOSING_SCREEN_MIN_DURATION: Duration = Duration::from_millis(500);
 // A cold Unity start loads Mono, D3D and the VRM scene before it creates the
 // player HWND. On the target machine this takes about fourteen seconds; five
 // seconds caused the desktop shell to kill a healthy player before it could
@@ -1223,7 +1224,10 @@ async fn export_backup(app: AppHandle, name: String) -> Result<bool, String> {
 #[tauri::command]
 fn start_graceful_shutdown(app: AppHandle) {
     thread::spawn(move || {
+        let started = Instant::now();
         app.state::<DesktopState>().shutdown();
+        // Keep the closing screen visible even when the core stops immediately.
+        thread::sleep(CLOSING_SCREEN_MIN_DURATION.saturating_sub(started.elapsed()));
         app.exit(0);
     });
 }
