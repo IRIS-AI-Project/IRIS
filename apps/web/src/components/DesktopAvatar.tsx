@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getAvatarOverlay, updateAvatarOverlay, WS_EVENTS_URL } from "../api";
+import { EDITOR_SETTING_EVENT, getSkills, type EditorAvailability } from "../skills/api";
+import { QuickTextActions } from "../skills/QuickTextActions";
 import type { AvatarOverlaySettings, BackendEvent } from "../types";
 import { configureDesktopAvatar, desktopAvatarControls, localAvatarRect, placePanel, type DesktopAvatarGeometry, type DesktopRect } from "../desktop-avatar";
 import { DOCUMENT_CHANGED, type DesktopConversationCommand, type DesktopConversationSnapshot } from "../desktop-avatar-bridge";
@@ -17,19 +19,25 @@ import { usePresence } from "../animations/usePresence";
 import "./DesktopAvatar.css";
 
 type Snapshot = DesktopConversationSnapshot & { ack?: string; command_error?: string };
+type PanelKind = "chat" | "tools";
+type Preview = "chat-preview" | "tools-preview";
+type Panel = PanelKind | Preview;
+const isPreview = (panel: Panel | null): panel is Preview => panel === "chat-preview" || panel === "tools-preview";
+const PANEL_PREVIEW_DELAY = 65;
+const PANEL_LEAVE_DELAY = 320;
 const empty: DesktopConversationSnapshot = { session_id:null, ready:false, loading:false, document_busy:false,
   microphone_active:false, microphone_starting:false, sound_muted:false, voice_state:"idle", cue:"", error:null };
 
-function AvatarControl({ children }: { children: ReactNode }) {
+function AvatarControl({ children, active = false }: { children: ReactNode; active?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   useLayoutEffect(() => {
     if (!ref.current) return;
-    const motion = animate(ref.current, { opacity: hovered || focused ? 1 : .52,
+    const motion = animate(ref.current, { opacity: hovered || focused ? 1 : active ? .78 : .52,
       duration: prefersReducedMotion() ? 0 : 150, ease: "outQuad" });
     return () => { motion.cancel(); };
-  }, [hovered, focused]);
+  }, [hovered, focused, active]);
   return <div ref={ref} className="desktop-avatar-control" data-avatar-interactive
     onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={event => setFocused((event.target as HTMLElement).matches(":focus-visible"))} onBlurCapture={event => {
@@ -44,8 +52,14 @@ export function DesktopAvatar() {
   const [subtitle, setSubtitle] = useState<{ session: string | null; text: string }>({session:null,text:""});
   const [hover, setHover] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [textOpen, setTextOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<Panel | null>(null);
+  const lastPanel = useRef<Panel>("tools");
+  const panelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const focusTools = useRef(false);
+  const focusChat = useRef(false);
+  const [editor, setEditor] = useState<EditorAvailability | null>(null);
+  const [voiceEditor, setVoiceEditor] = useState<{ id: number } | null>(null);
+  const catalogRequest = useRef<AbortController | null>(null);
   const [picking, setPicking] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const pickerActive=useRef(false);
@@ -112,6 +126,21 @@ export function DesktopAvatar() {
       socket.onclose=() => { if(!disposed) retry=setTimeout(connect,1500); };
     };
     const listeners=[
+      listen<EditorAvailability>(EDITOR_SETTING_EVENT, ({payload}) => {
+        catalogRequest.current?.abort();
+        setEditor(payload);
+        if (!payload.enabled) setVoiceEditor(null);
+      }),
+      listen<number>("text-editor-reveal", ({payload}) => {
+        if (disposed) return;
+        clearTimeout(panelTimer.current);
+        setOpenPanel("tools");
+        setVoiceEditor({ id: payload });
+      }),
+      listen("text-editor-close-requested", () => {
+        setVoiceEditor(null);
+        setOpenPanel(current => current === "tools" ? null : current);
+      }),
       listen<boolean>("desktop-avatar-hover", ({payload:over}) => {
         if(disposed) return;
         // Native polling covers Unity, the avatar bounds and all control regions.
@@ -129,7 +158,7 @@ export function DesktopAvatar() {
       }),
       listen<Snapshot>("desktop-avatar-conversation", ({payload:next}) => {
         if(disposed) return;
-        if(next.session_id !== snapshot.current.session_id) { setDraft(""); setToolsOpen(false); }
+        if(next.session_id !== snapshot.current.session_id) { setDraft(""); }
         snapshot.current=next; lastSnapshot.current=Date.now(); setConversation(next);
         if(next.ack) {
           const entry=pending.current.get(next.ack);
@@ -144,7 +173,8 @@ export function DesktopAvatar() {
     return () => {
       document.documentElement.classList.remove("desktop-avatar-root");
       document.body.classList.remove("desktop-avatar-body");
-      disposed=true; clearTimeout(retry); clearTimeout(leaveTimer.current); clearInterval(heartbeat); socket?.close();
+      disposed=true; clearTimeout(retry); clearTimeout(leaveTimer.current); clearTimeout(panelTimer.current);
+      clearInterval(heartbeat); socket?.close();
       for(const stop of listeners) void stop.then(unlisten => unlisten());
       for(const entry of pending.current.values()) { clearTimeout(entry.timer); entry.reject(new Error("Панель закрыта")); }
       pending.current.clear();
@@ -152,10 +182,32 @@ export function DesktopAvatar() {
     };
   },[command]);
 
-  const visible=hover || focused || picking || fileBusy || textOpen || toolsOpen;
+  const visible = hover || focused || picking || fileBusy || openPanel !== null;
+  useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    catalogRequest.current = controller;
+    void getSkills(controller.signal).then(({ text_editor: skill }) => {
+      if (!controller.signal.aborted) setEditor(skill);
+    }, () => {});
+    return () => controller.abort();
+  }, [visible]);
+
+  const textOpen = openPanel === "chat" || openPanel === "chat-preview";
+  const toolsOpen = openPanel === "tools-preview" || openPanel === "tools";
+  const [displayKind, setDisplayKind] = useState<PanelKind>("tools");
+  const nextKind = textOpen ? "chat" : toolsOpen ? "tools" : displayKind;
+  const switchingPanel = nextKind !== displayKind;
+  const displayChat = displayKind === "chat";
+  useLayoutEffect(() => { if (openPanel) lastPanel.current = openPanel; }, [openPanel]);
   const presence=usePresence<HTMLDivElement>(visible,0);
-  const popover=usePresence<HTMLDivElement>(textOpen || toolsOpen,0);
-  const panel=popover.ref;
+  const popover = usePresence<HTMLDivElement>(openPanel !== null && !switchingPanel, 14, {
+    axis: "X", enterDuration: 165, initialOpacity: .42,
+  });
+  useLayoutEffect(() => {
+    if (!popover.present && switchingPanel) setDisplayKind(nextKind);
+  }, [nextKind, popover.present, switchingPanel]);
+  const panel = useRef<HTMLDivElement>(null);
   const ready=conversation.ready && clock-lastSnapshot.current < 10_000;
   const speaking=ready && conversation.voice_state === "speaking";
   const subtitleCue=ready && subtitle.session === conversation.session_id ? subtitle.text : "";
@@ -173,18 +225,36 @@ export function DesktopAvatar() {
   const rect=geometry ? localAvatarRect(geometry) : {x:0,y:0,width:0,height:0};
   const work: DesktopRect=geometry ? {x:0,y:0,width:geometry.monitor.area.width/geometry.monitor.scale,
     height:geometry.monitor.area.height/geometry.monitor.scale} : {x:0,y:0,width:innerWidth,height:innerHeight};
-  const position=placePanel(rect,Math.min(296,work.width-24),panelHeight,work);
   const controls=desktopAvatarControls(rect,work);
+  const position=placePanel(rect, (displayChat ? 276 : 296)+(controls.size-44)*5, panelHeight, work);
   const startTransform=(kind: "move" | "resize") => {
     if(overlay?.locked) return;
-    setToolsOpen(false);
+    clearTimeout(panelTimer.current);
+    setVoiceEditor(null);
+    setOpenPanel(current => current === "chat" ? current : null);
     void invoke("begin_desktop_avatar_transform",{kind}).catch(() => setError("Не удалось изменить размещение Iris."));
   };
   useLayoutEffect(() => {
-    if(!panel.current) return;
-    const observer=new ResizeObserver(() => { if(panel.current) setPanelHeight(panel.current.offsetHeight); });
-    observer.observe(panel.current); return () => observer.disconnect();
-  },[popover.present]);
+    const element = panel.current;
+    if (!element || !popover.present) return;
+    const measure = () => setPanelHeight(element.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [displayChat, popover.present]);
+  useEffect(() => {
+    if (!isPreview(openPanel)) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      event.preventDefault();
+      clearTimeout(panelTimer.current);
+      if (lastPanel.current === "tools-preview") lastPanel.current = "tools";
+      setOpenPanel(current => isPreview(current) ? null : current);
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [openPanel]);
   useLayoutEffect(() => {
     if(!geometry) return;
     let stopped=false;
@@ -198,7 +268,7 @@ export function DesktopAvatar() {
     update(); const observer=new ResizeObserver(update);
     document.querySelectorAll<HTMLElement>("[data-avatar-interactive]").forEach(element => observer.observe(element));
     return () => { stopped=true; observer.disconnect(); };
-  },[geometry,visible,presence.present,popover.present,textOpen,toolsOpen,panelHeight,error,ready,conversation.error]);
+  },[geometry,visible,presence.present,popover.present,openPanel,panelHeight,position.x,position.y,position.width,error,ready,conversation.error]);
   useEffect(() => {
     if(captionElement.current && subtitleCue) {
       const motion=animate(captionElement.current,{opacity:[0.55,1],duration:prefersReducedMotion()?80:150,ease:"outQuad"});
@@ -206,18 +276,34 @@ export function DesktopAvatar() {
     }
   },[subtitleCue]);
   useLayoutEffect(() => {
-    if (!popover.present || (!textOpen && !toolsOpen)) return;
-    if (textOpen) textarea.current?.focus();
-    else panel.current?.querySelector<HTMLButtonElement>(".desktop-document button:not(:disabled)")?.focus();
-    const body = panel.current?.querySelector<HTMLElement>(".desktop-avatar-popover-body");
-    if (!body) return;
-    const motion = animate(body, { translateX: prefersReducedMotion() ? 0 : [10, 0],
-      opacity: [.5, 1], duration: prefersReducedMotion() ? 0 : 180, ease: "outCubic" });
-    return () => { motion.cancel(); };
-  },[textOpen,toolsOpen,popover.present]);
+    if (!popover.present || switchingPanel) return;
+    if (textOpen && focusChat.current) {
+      focusChat.current = false;
+      textarea.current?.focus();
+    }
+    if (openPanel === "tools" && focusTools.current) {
+      focusTools.current = false;
+      panel.current?.querySelector<HTMLButtonElement>(".desktop-tools button:not(:disabled, [aria-disabled=true])")?.focus();
+    }
+  }, [openPanel, popover.present, textOpen, switchingPanel]);
   useEffect(() => {
-    const blur=() => { setFocused(false); if(!pickerActive.current && !fileBusyRef.current) { setTextOpen(false); setToolsOpen(false); } };
-    window.addEventListener("blur",blur); return () => window.removeEventListener("blur",blur);
+    const blur=() => {
+      clearTimeout(panelTimer.current);
+      focusTools.current = false;
+      focusChat.current = false;
+      setFocused(false);
+      if (!pickerActive.current && !fileBusyRef.current) {
+        if (lastPanel.current === "tools-preview") lastPanel.current = "tools";
+        setOpenPanel(null); setVoiceEditor(null);
+      }
+    };
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!panel.current?.contains(target) && !textTrigger.current?.contains(target) && !toolsTrigger.current?.contains(target)) blur();
+    };
+    window.addEventListener("blur",blur);
+    document.addEventListener("pointerdown", outside);
+    return () => { window.removeEventListener("blur",blur); document.removeEventListener("pointerdown", outside); };
   },[]);
   const onPickerInteraction=useCallback((value:boolean) => {pickerActive.current=value;setPicking(value);},[]);
   const onFileBusy=useCallback((value:boolean) => {
@@ -243,13 +329,32 @@ export function DesktopAvatar() {
   caption.x=Math.max(12,Math.min(caption.x,work.width-captionWidth-12));
   caption.y=Math.max(12,Math.min(caption.y,work.height-caption.height-12));
   const style=(r:DesktopRect) => ({left:r.x,top:r.y,width:r.width});
+  const previewPanel = (kind: PanelKind) => {
+    clearTimeout(panelTimer.current);
+    if (openPanel === null || isPreview(openPanel)) panelTimer.current = setTimeout(() => {
+      setOpenPanel(current => current === null || isPreview(current) ? `${kind}-preview` : current);
+    }, PANEL_PREVIEW_DELAY);
+  };
+  const leavePanel = () => {
+    clearTimeout(panelTimer.current);
+    panelTimer.current = setTimeout(() => {
+      setOpenPanel(current => isPreview(current) ? null : current);
+    }, PANEL_LEAVE_DELAY);
+  };
   const closePanel=() => {
-    (textOpen ? textTrigger : toolsTrigger).current?.focus();
-    setTextOpen(false); setToolsOpen(false);
+    clearTimeout(panelTimer.current);
+    if (lastPanel.current === "tools-preview") lastPanel.current = "tools";
+    setVoiceEditor(null);
+    if (!isPreview(openPanel) || panel.current?.contains(document.activeElement)) {
+      (textOpen ? textTrigger : toolsTrigger).current?.focus();
+    }
+    setOpenPanel(null);
   };
   if(!geometry || !overlay) return null;
-  return <main className="desktop-avatar-surface" aria-label="Iris на рабочем столе" onKeyDown={event => {
-    if(event.key==="Escape" && (textOpen || toolsOpen)) {event.preventDefault();closePanel();}
+  return <main className="desktop-avatar-surface" aria-label="Iris на рабочем столе"
+    style={{"--avatar-control-size": `${controls.size}px`, "--avatar-control-gap": `${controls.gap}px`} as CSSProperties}
+    onKeyDown={event => {
+    if(event.key==="Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing && (textOpen || toolsOpen)) {event.preventDefault();closePanel();}
   }} onFocusCapture={event => setFocused((event.target as HTMLElement).matches(":focus-visible") || Boolean(panel.current?.contains(event.target as Node)))} onBlurCapture={event => {
     if(!event.currentTarget.contains(event.relatedTarget as Node)) setFocused(false);
   }}>
@@ -264,12 +369,31 @@ export function DesktopAvatar() {
     <div ref={presence.ref} hidden={!presence.present} inert={!visible || undefined} className="desktop-avatar-controls"
       role="toolbar" aria-label="Управление Iris">
       <div className="desktop-avatar-left" style={style(controls.left)}>
-        <AvatarControl><MaterialButton materialKey="desktop.text" ref={textTrigger} type="button" className={`desktop-avatar-icon${textOpen?" is-active":""}`}
+        <AvatarControl active={textOpen}><MaterialButton materialKey="desktop.text" ref={textTrigger} type="button" className={`desktop-avatar-icon${textOpen?" is-active":""}`}
           tone={textOpen?"accent":"graphite"} aria-label="Написать Iris" aria-haspopup="dialog" aria-expanded={textOpen} aria-controls="desktop-avatar-popover"
-          onClick={() => {setTextOpen(v=>!v);setToolsOpen(false);}}><IconMailChatBubbleTextSquare size={21}/></MaterialButton></AvatarControl>
-        <AvatarControl><MaterialButton materialKey="desktop.tools" ref={toolsTrigger} type="button" className={`desktop-avatar-icon${toolsOpen?" is-active":""}`}
+          onPointerEnter={event => { if (event.pointerType === "mouse") previewPanel("chat"); }}
+          onPointerLeave={leavePanel} onPointerCancel={leavePanel}
+          onClick={event => {
+            clearTimeout(panelTimer.current);
+            setVoiceEditor(null);
+            if (openPanel === "chat") {
+              setOpenPanel(null);
+              return;
+            }
+            if (textOpen) textarea.current?.focus();
+            else focusChat.current = true;
+            setOpenPanel("chat");
+          }}><IconMailChatBubbleTextSquare size={21}/></MaterialButton></AvatarControl>
+        <AvatarControl active={toolsOpen}><MaterialButton materialKey="desktop.tools" ref={toolsTrigger} type="button" className={`desktop-avatar-icon${toolsOpen?" is-active":""}`}
           tone={toolsOpen?"accent":"graphite"} aria-label="Инструменты" aria-haspopup="dialog" aria-expanded={toolsOpen} aria-controls="desktop-avatar-popover"
-          onClick={() => {setToolsOpen(v=>!v);setTextOpen(false);}}><IconInterfacePageControllerSettings size={21}/></MaterialButton></AvatarControl>
+          onPointerEnter={event => { if (event.pointerType === "mouse") previewPanel("tools"); }}
+          onPointerLeave={leavePanel} onPointerCancel={leavePanel}
+          onClick={event => {
+            clearTimeout(panelTimer.current);
+            focusTools.current = event.detail === 0 && openPanel !== "tools";
+            setVoiceEditor(null);
+            setOpenPanel(current => current === "tools" ? null : "tools");
+          }}><IconInterfacePageControllerSettings size={21}/></MaterialButton></AvatarControl>
       </div>
       <div className="desktop-avatar-right" style={style(controls.right)}>
         <AvatarControl><MaterialButtonGroup materialKey="desktop.media" muted={[!conversation.microphone_active,conversation.sound_muted]}
@@ -284,18 +408,36 @@ export function DesktopAvatar() {
         </MaterialButtonGroup></AvatarControl>
       </div>
     </div>
-    <div ref={panel} id="desktop-avatar-popover" hidden={!popover.present} inert={!(textOpen || toolsOpen) || undefined}
-      data-avatar-interactive={textOpen || toolsOpen?true:undefined} className={`desktop-avatar-popover desktop-avatar-glass${textOpen?" is-chat":" is-tools"}`}
-      style={{...style(position),maxHeight:work.height-24}} role="dialog" aria-modal="false" aria-label={textOpen?"Написать Iris":"Инструменты Iris"}>
-      <div className="desktop-avatar-popover-body">
-      <form hidden={!textOpen} className="desktop-avatar-composer" onSubmit={event => {event.preventDefault();void send();}}>
-        <textarea ref={textarea} aria-label="Сообщение Iris" rows={4} value={draft} onChange={event=>setDraft(event.target.value)}
-          onKeyDown={event => {if(event.key==="Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
-        <MaterialButton materialKey="desktop.send" type="submit" disabled={!ready || busy || fileBusy || !draft.trim()} aria-label="Отправить сообщение"><IconInterfaceArrowUp size={18}/></MaterialButton>
-      </form>
-      <div hidden={!toolsOpen}><DocumentAttachment variant="desktop" sessionId={conversation.session_id} disabled={!ready || conversation.loading} onBusyChange={onFileBusy} onInteractionChange={onPickerInteraction}/></div>
+    <div ref={panel} id="desktop-avatar-popover" hidden={!popover.present} inert={switchingPanel || !(textOpen || toolsOpen) || undefined}
+      data-avatar-interactive={openPanel !== null ? true : undefined} className={`desktop-avatar-popover${displayChat?" is-chat":" is-tools"}`}
+      style={{...style(position),maxHeight:work.height-24}} role="dialog" aria-modal="false" aria-label={displayChat?"Написать Iris":"Инструменты Iris"}
+      onPointerEnter={() => clearTimeout(panelTimer.current)} onPointerLeave={leavePanel}
+      onPointerDownCapture={() => {
+        clearTimeout(panelTimer.current);
+        setOpenPanel(current => current === "tools-preview" ? "tools" : current === "chat-preview" ? "chat" : current);
+      }} onFocusCapture={() => {
+        clearTimeout(panelTimer.current);
+        setOpenPanel(current => current === "tools-preview" ? "tools" : current === "chat-preview" ? "chat" : current);
+      }}>
+      <div ref={popover.ref} className="desktop-avatar-popover-face desktop-avatar-glass">
+        <div className="desktop-avatar-popover-body">
+          <form hidden={!displayChat} className="desktop-avatar-composer" onSubmit={event => {event.preventDefault();void send();}}>
+            <textarea ref={textarea} aria-label="Сообщение Iris" rows={4} value={draft} onChange={event => {
+              const text = event.target.value;
+              setDraft(text);
+              if (text) setOpenPanel(current => current === "chat-preview" ? "chat" : current);
+            }}
+              onKeyDown={event => {if(event.key==="Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault();void send();}}}/>
+            <MaterialButton materialKey="desktop.send" type="submit" disabled={!ready || busy || fileBusy || !draft.trim()} aria-label="Отправить сообщение"><IconInterfaceArrowUp size={18}/></MaterialButton>
+          </form>
+          <div hidden={displayChat} className="desktop-tools">
+            {editor?.enabled &&
+              <QuickTextActions key={editor.revision} skill={editor} voiceSession={voiceEditor} />}
+            <DocumentAttachment variant="desktop" sessionId={conversation.session_id} disabled={!ready || conversation.loading} onBusyChange={onFileBusy} onInteractionChange={onPickerInteraction}/>
+          </div>
+        </div>
+        <ConfirmationRim cardRef={popover.ref} seed={buttonSeed("desktop.panel")} active={textOpen || toolsOpen} />
       </div>
-      <ConfirmationRim cardRef={panel} seed={buttonSeed("desktop.panel")} active={textOpen || toolsOpen} />
     </div>
     {visible && (!ready || error || conversation.error) && <div data-avatar-interactive className="desktop-avatar-error desktop-avatar-glass" style={{...style(position),top:(textOpen || toolsOpen)?Math.min(position.y+panelHeight+8,work.height-80):position.y}} role="status">{error || conversation.error || "Подключаюсь к Iris…"}
         {error && <button type="button" aria-label="Закрыть сообщение" onClick={()=>setError("")}><IconInterfaceCross size={12}/></button>}</div>}

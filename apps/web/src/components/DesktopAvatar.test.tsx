@@ -9,7 +9,10 @@ vi.mock("@tauri-apps/api/core",()=>({invoke:mock.invoke}));
 vi.mock("@tauri-apps/api/event",()=>({listen:vi.fn(async (name:string,callback:(event:{payload:any})=>void)=>{
   mock.listeners.set(name,callback); return ()=>mock.listeners.delete(name);
 })}));
-vi.mock("../api",()=>({getAvatarOverlay:mock.overlay,updateAvatarOverlay:mock.update,WS_EVENTS_URL:"ws://test/events"}));
+vi.mock("../api",()=>({
+  getAvatarOverlay:mock.overlay,updateAvatarOverlay:mock.update,WS_EVENTS_URL:"ws://test/events",
+  requestJson:vi.fn(async path => path === "/skills" ? {text_editor:{enabled:true,revision:1,model_available:true}} : {}),
+}));
 import { DesktopAvatar } from "./DesktopAvatar";
 import { desktopAvatarControls, localAvatarRect, placePanel } from "../desktop-avatar";
 const layout={monitor:"primary",x_ratio:0.8,y_ratio:1,height_dip:400};
@@ -168,6 +171,86 @@ it("switches left panels, retains the draft and returns focus on Escape",async()
   fireEvent.click(chat);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+it("previews tools on mouse hover and keeps the preview open across the gap without moving focus", async () => {
+  render(<DesktopAvatar />);
+  await screen.findByLabelText("Переместить Iris");
+  vi.useFakeTimers();
+  act(() => emit("desktop-avatar-hover", true));
+  const trigger = screen.getByRole("button", { name: "Инструменты" });
+  const pointer = (type: string, pointerType: string, target: HTMLElement) =>
+    fireEvent(target, Object.assign(new MouseEvent(type, { bubbles: true }), { pointerType }));
+  pointer("pointerover", "touch", trigger);
+  act(() => vi.advanceTimersByTime(500));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  pointer("pointerout", "touch", trigger);
+  pointer("pointerover", "mouse", trigger);
+  act(() => vi.advanceTimersByTime(64));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  act(() => vi.advanceTimersByTime(1));
+  const panel = screen.getByRole("dialog", { name: "Инструменты Iris" });
+  expect(panel).toBeVisible();
+  expect(document.activeElement).toBe(document.body);
+
+  pointer("pointerout", "mouse", trigger);
+  act(() => vi.advanceTimersByTime(200));
+  pointer("pointerover", "mouse", panel);
+  act(() => vi.advanceTimersByTime(500));
+  expect(panel).toBeVisible();
+  pointer("pointerout", "mouse", panel);
+  act(() => vi.advanceTimersByTime(320));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+  pointer("pointerover", "mouse", trigger);
+  act(() => vi.advanceTimersByTime(65));
+  fireEvent.click(trigger, { detail: 1 });
+  pointer("pointerout", "mouse", trigger);
+  act(() => vi.advanceTimersByTime(500));
+  expect(screen.getByRole("dialog", { name: "Инструменты Iris" })).toBeVisible();
+});
+it("keeps clicked chat open after pointer leave and preserves its draft after an outside click", async () => {
+  render(<DesktopAvatar />);
+  await screen.findByLabelText("Переместить Iris");
+  vi.useFakeTimers();
+  act(() => emit("desktop-avatar-hover", true));
+  const trigger = screen.getByRole("button", { name: "Написать Iris" });
+  const pointer = (type: string, target: HTMLElement) =>
+    fireEvent(target, Object.assign(new MouseEvent(type, { bubbles: true }), { pointerType: "mouse" }));
+  pointer("pointerover", trigger);
+  act(() => vi.advanceTimersByTime(65));
+  const panel = screen.getByRole("dialog", { name: "Написать Iris" });
+  const input = screen.getByRole("textbox", { name: "Сообщение Iris" });
+  expect(document.body).toHaveFocus();
+
+  pointer("pointerout", trigger);
+  pointer("pointerover", panel);
+  act(() => vi.advanceTimersByTime(400));
+  expect(panel).toBeVisible();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(panel).not.toBeVisible();
+  expect(document.body).toHaveFocus();
+
+  pointer("pointerover", trigger);
+  act(() => vi.advanceTimersByTime(65));
+  fireEvent.click(trigger, { detail: 1 });
+  expect(input).toHaveFocus();
+  pointer("pointerout", trigger);
+  act(() => vi.advanceTimersByTime(400));
+  expect(panel).toBeVisible();
+  fireEvent.pointerDown(document.body);
+  expect(panel).not.toBeVisible();
+
+  pointer("pointerover", trigger);
+  act(() => vi.advanceTimersByTime(65));
+  fireEvent.click(trigger, { detail: 1 });
+  fireEvent.change(input, { target: { value: "Черновик" } });
+  pointer("pointerout", panel);
+  act(() => vi.advanceTimersByTime(400));
+  expect(panel).toBeVisible();
+  fireEvent.blur(window);
+  expect(panel).not.toBeVisible();
+  fireEvent.click(trigger, { detail: 1 });
+  expect(input).toHaveValue("Черновик");
+});
 it("sends to the existing session, preserves failed text and clears accepted text",async()=>{
   render(<DesktopAvatar/>); await screen.findByLabelText("Переместить Iris");
   await waitFor(()=>expect(mock.invoke).toHaveBeenCalledWith("desktop_avatar_command",expect.anything()));
@@ -211,4 +294,44 @@ it("anchors controls inside the avatar and opens panels to their left without re
   expect(edgePanel.x).toBe(12);
   expect(edgePanel.y).toBeGreaterThanOrEqual(edgeControls.left.y+edgeControls.left.height);
   expect(edgeControls.left.x+44).toBeLessThanOrEqual(edgeControls.right.x);
+});
+
+it("scales the desktop controls while keeping small hit targets at 44 DIP", () => {
+  const work = { x: 0, y: 0, width: 1024, height: 760 };
+  expect(desktopAvatarControls({ x: 0, y: 560, width: 90, height: 160 }, work).size).toBe(44);
+  const large = desktopAvatarControls({ x: 0, y: 50, width: 410, height: 700 }, work);
+  expect(large.size).toBe(56);
+  expect(large.left.height).toBe(large.size * 2 + large.gap);
+  expect(large.right.height).toBe(large.size * 2);
+});
+
+
+it("retains a quick edit result after outside dismissal and switching to chat", async () => {
+  render(<DesktopAvatar />);
+  await screen.findByLabelText("Переместить Iris");
+  act(() => emit("desktop-avatar-hover", true));
+  fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
+  await screen.findByRole("button", { name: "Перевести" });
+  const original = mock.invoke.getMockImplementation()!;
+  mock.invoke.mockImplementation(async (name, args) => {
+    if (name === "open_text_editor") return 7;
+    if (name === "take_text_editor_updates") return { id: 7, revision: 1, updates: [{
+      selection: { id: 5, text: "Текст", application: "Поле", replaceable: true }, voice: null,
+    }] };
+    return original(name, args);
+  });
+  const { requestJson } = await import("../api");
+  vi.mocked(requestJson).mockImplementation(async (path: string) => path === "/skills"
+    ? { text_editor: { enabled: true, revision: 1, model_available: true } } as any
+    : path === "/skills/text-editor/edit" ? { text: "Translated text" } as any : {});
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Перевести" }));
+  fireEvent.click(screen.getByRole("button", { name: "Перевести" }));
+  await screen.findByText("Translated text");
+  fireEvent.pointerLeave(screen.getByRole("dialog"));
+  fireEvent.blur(window);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Написать Iris" }));
+  fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
+  expect(screen.getByText("Translated text")).toBeVisible();
+  expect(mock.invoke).not.toHaveBeenCalledWith("close_text_editor", expect.anything());
 });
