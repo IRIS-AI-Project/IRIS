@@ -6,7 +6,7 @@
   pointer-events: none;
   user-select: none;
   z-index: 0;
-  container-type: inline-size;
+  container-type: size;
 }
 
 .chat-welcome-depth {
@@ -33,7 +33,7 @@
   filter: saturate(.68);
 }
 
-.chat-welcome-flora-left { left: -36px; }
+.chat-welcome-flora-left { left: -36px; max-width: calc((100cqh - 8px) * .75); }
 .chat-welcome-flora-right { right: -38px; width: clamp(360px, 65cqw, 730px); opacity: .58; }
 
 .chat-welcome-ground {
