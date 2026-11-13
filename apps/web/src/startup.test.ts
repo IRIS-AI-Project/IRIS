@@ -30,26 +30,28 @@ describe("real startup stages", () => {
 });
 
 describe("startup component progress", () => {
-  it("does not invent progress before readiness or reuse a previous core's snapshot", () => {
+  it("fills half the first section when only the core is confirmed", () => {
     expect(getStartupProgress("starting", ready, false).value).toBeNull();
     expect(getStartupProgress("starting", ready, false).components.find(row => row.id === "tts")?.state).toBe("unknown");
-    expect(getStartupProgress("ready", null, false).value).toBeNull();
+    expect(getStartupProgress("ready", null, false).value).toBeCloseTo(1 / 6);
+    expect(getStartupProgress("ready", { ...ready, text_chat: "loading" }, false).value).toBeCloseTo(1 / 6);
   });
   it("reports parallel voice preparation and advances only for settled checks", () => {
     const loading = { ...ready, stt: "loading" as const, tts: "loading" as const, live_ready: false };
     const progress = getStartupProgress("ready", loading, false);
-    expect(progress.value).toBe(3 / 5);
+    expect(progress.value).toBeCloseTo(4 / 9);
     expect(progress.complete).toBe(false);
     expect(progress.detail).toBe("Подготавливаю голосовые сервисы");
     const next = getStartupProgress("ready", { ...loading, stt: "ready" }, false);
-    expect(next.value).toBe(4 / 5);
+    expect(next.value).toBeCloseTo(5 / 9);
     expect(next.detail).toBe("Подготавливаю голос Iris");
   });
   it("waits for the first avatar frame even when voice services are ready", () => {
     const avatar: AvatarHostStatus = { placement: "in_app", running: true, embedded: false, visible: true,
       ready: false, phase: "warming", error: null };
     const progress = getStartupProgress("ready", ready, true, avatar);
-    expect(progress.value).toBe(5 / 6);
+    expect(progress.value).toBeCloseTo(2 / 3);
+    expect(getStartupProgress("ready", null, true, avatar, true).value).toBeCloseTo(2 / 3);
     expect(progress.complete).toBe(false);
     expect(progress.detail).toBe("Подготавливаю первый кадр аватара");
     expect(getStartupProgress("ready", ready, false, { ...avatar, phase: "ready", ready: true }).value).toBe(1);

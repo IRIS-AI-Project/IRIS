@@ -12,6 +12,25 @@ const progress = getStartupProgress("ready", loading, false);
 afterEach(() => cleanup());
 
 describe("startup progress feedback", () => {
+  it("keeps voice preparation in the second section when the first snapshot arrives", () => {
+    const { container, rerender } = render(<StartupProgress progress={getStartupProgress("ready", null, false)} />);
+    const sections = () => [...container.querySelectorAll<HTMLElement>(".startup-progress-segment")]
+      .map(segment => segment.dataset.fill);
+
+    expect(sections()).toEqual(["partial", "empty", "empty"]);
+    rerender(<StartupProgress progress={progress} />);
+    expect(sections()).toEqual(["full", "partial", "empty"]);
+
+    rerender(<StartupProgress progress={getStartupProgress("ready", { ...loading, tts: "ready" }, true)} />);
+    expect(sections()).toEqual(["full", "full", "empty"]);
+    rerender(<StartupProgress progress={getStartupProgress("ready", { ...loading, tts: "ready" }, false)} />);
+    expect(sections()).toEqual(["full", "full", "full"]);
+  });
+  it("fills the last section when startup completes with no readiness endpoint", () => {
+    const { container } = render(<StartupProgress progress={getStartupProgress("ready", null, false, null, true)} />);
+    expect(container.querySelectorAll('.startup-progress-segment[data-fill="full"]')).toHaveLength(3);
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+  });
   it("keeps one current loading status with no details control or stage labels", () => {
     const { container } = render(<StartupScreen status="ready" stage={2} progress={progress} subdetail={progress.detail} />);
     expect(screen.getByText("Подготавливаю голос Iris")).toBeVisible();
