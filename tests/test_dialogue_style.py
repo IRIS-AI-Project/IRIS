@@ -54,8 +54,7 @@ def test_dialogue_style_never_enters_avatar_or_legacy_payload() -> None:
 
 def test_street_keeps_character_without_a_per_reply_vocabulary_quota() -> None:
     street = dialogue_style_prompt("street")
-    assert "Можешь материться первой" in street
-    assert "делай это регулярно" in street
+    assert "В непринуждённой беседе чаще матерись первой" in street
     assert "короткое «Ага» допустимо" in street
     assert "Не вставляй мат механически" in street
     assert "матерись заметно меньше" in dialogue_style_prompt("restrained")
@@ -65,7 +64,7 @@ def test_street_keeps_character_without_a_per_reply_vocabulary_quota() -> None:
 @pytest.mark.parametrize("mode,text", [("micro", "Молодец кстати"), ("banter", "Шуткани"), ("conversational", "Опять всё сломалось")])
 def test_casual_street_keeps_active_voice_without_forcing_profanity(mode, text):
     prompt = dialogue_style_prompt("street", turn_mode=mode, user_text=text)
-    assert "делай это регулярно" in prompt
+    assert "чаще матерись первой" in prompt
     assert "Используй мат прямо в реплике" not in prompt
     assert "не делай одно слово пунктуацией" in prompt
 

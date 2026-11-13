@@ -55,6 +55,7 @@ def test_questions_get_a_focused_but_bounded_answer(text: str) -> None:
     prompt = pacing.prompt_block(input_mode="text")
     assert "2-5 предложений" in prompt
     assert "не превращает ответ в лекцию" in prompt
+    assert "продолжает шутку или поправляет её трактовку" in prompt
 
 
 def test_explicit_depth_request_is_the_only_default_route_to_deep_mode() -> None:
