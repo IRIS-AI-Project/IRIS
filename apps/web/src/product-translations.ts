@@ -3,6 +3,13 @@ import { CHANGELOG_TRANSLATIONS } from "./changelog-translations";
 import { SETTINGS_TRANSLATIONS } from "./settings/translations";
 /** UI copy for the three approved product stages. User data is never translated. */
 export const PRODUCT_TRANSLATIONS: readonly (readonly [string, string])[] = [
+  ["Выберите непустой документ, таблицу или изображение до 10 МБ.", "Choose a non-empty document, spreadsheet or image up to 10 MB."],
+  ["Документ, таблица или изображение · DeepSeek · до 10 МБ", "Document, spreadsheet or image · DeepSeek · up to 10 MB"],
+  ["Поиск и чтение страниц используют основной ключ DeepSeek и оплачиваются по тарифу API.", "Search and page reading use your main DeepSeek key and are billed at API rates."],
+  ["Ключ DeepSeek настроен", "DeepSeek key configured"],
+  ["Ключ DeepSeek не настроен", "DeepSeek key not configured"],
+  ["DeepSeek читает файл целиком. Страницы, разделы и цитаты можно уточнить в чате; просмотр извлечённого текста недоступен.", "DeepSeek reads the whole file. Ask about pages, sections and quotations in chat; extracted text is not available for preview."],
+  ["Файл целиком загружается в DeepSeek. Для PDF, Word, презентаций и изображений распознаются текст и иллюстрации; разбор оплачивается по тарифу API. Файл не добавляется в личную память и историю Iris. При удалении или замене Iris отправляет запрос на удаление облачной копии; срок её хранения — до 2 часов. После перезапуска или истечения срока прикрепите файл заново.", "The whole file is uploaded to DeepSeek. Text and illustrations are recognized in PDFs, Word documents, presentations and images; parsing is billed at API rates. The file is not added to Iris personal memory or history. Removing or replacing it requests deletion of the cloud copy, which expires within 2 hours. Attach it again after a restart or expiration."],
   ["Голос и аватар", "Voice and avatar"],
   ["Подготовка к разговору", "Getting ready to talk"],
   ["Подготовка завершена", "Preparation complete"],

@@ -35,6 +35,7 @@ class ChatMessage(BaseModel):
     content: str
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
+    file_ids: list[str] = Field(default_factory=list, exclude=True, repr=False)
 
 
 class LLMUsage(BaseModel):

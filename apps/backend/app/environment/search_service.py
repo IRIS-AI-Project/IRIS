@@ -1,4 +1,4 @@
-"""Bounded, key-free web search used by Iris during a conversation turn."""
+"""Bounded web search through DeepSeek or explicitly selected legacy sources."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from apps.backend.app.environment.retrieval import canonical_url, clean_text, model_text, parse_date, preferred_host, relevance, sensitive_query, terms
-from apps.backend.app.environment.search_providers import API_PROVIDERS, api_search
+from apps.backend.app.environment.search_providers import API_PROVIDERS, api_search, deepseek_query
 from apps.backend.app.environment.search_budget import SearchBudget
 from apps.backend.app.environment.release_evidence import latest_release_question, release_question, release_domains, official_release_feed, release_statement, primary_release_source
 
@@ -100,6 +100,7 @@ class SearchResult:
     provider: str = "duckduckgo"
     modified_at: str = ""
     content_truncated: bool = False
+    rerank_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +126,8 @@ class SearchSnapshot:
     def compact_summary(self, max_items: int = 3, max_chars: int = 1600) -> str:
         """Return bounded facts for the model; URLs stay in durable metadata."""
         lines = [f"Результаты поиска по запросу «{model_text(self.query, 300)}»:"]
+        if not self.results:
+            lines.append("Подходящие источники для этой формулировки не отобраны. Это не доказывает, что события не было; сохрани предмет и попробуй другую формулировку.")
         lines.extend("Ограничение проверки: " + warning for warning in self.evidence_warnings[:2])
         if self.supporting_quote:
             lines.append("Проверенная цитата: " + model_text(self.supporting_quote, 600))
@@ -498,8 +501,8 @@ def _conflicting_date_claims(results):
 
 
 class SearchService:
-    """Two search providers and optional page evidence under one deadline."""
-    def __init__(self, http_client: httpx.AsyncClient | None = None, *, runtime_settings=None, credentials=None, budget_path: Path | None = None) -> None:
+    """Search results and page evidence under a shared conversation deadline."""
+    def __init__(self, http_client: httpx.AsyncClient | None = None, *, runtime_settings=None, credentials=None, budget_path: Path | None = None, deepseek_base_url: str = "https://api.deepseek.com") -> None:
         self._client = http_client
         self._page_client = http_client
         self._cache_lock = asyncio.Lock()
@@ -510,14 +513,15 @@ class SearchService:
         self._hedge_delay_seconds = .35
         self._runtime_settings = runtime_settings
         self._credentials = dict(credentials or {})
+        self._deepseek_base_url = deepseek_base_url.rstrip('/').removesuffix('/v1')
         self._budget = SearchBudget(budget_path)
         self._quota = None
         self._admission_lock = asyncio.Lock()
         self._eligibility_denials = {}
 
     def selected_provider(self) -> str:
-        provider = getattr(self._runtime_settings, "web_search_provider", "free")
-        return provider if provider == "tavily" else "free"
+        provider = getattr(self._runtime_settings, "web_search_provider", "deepseek" if self._credentials.get("deepseek") else "free")
+        return provider if provider in {"deepseek", "tavily"} else "free"
 
     def configured_providers(self) -> dict[str, bool]:
         return {name: bool(self._credentials.get(name)) for name in API_PROVIDERS}
@@ -685,6 +689,27 @@ class SearchService:
 
     async def _api_provider(self, provider, query, *, mode="web", since="", until=""):
         _API_SENT.set(False)
+        if provider == "deepseek":
+            key = self._credentials.get(provider)
+            if not key:
+                return [], "unconfigured"
+            if self._blocked_until.get(provider, 0) > time.monotonic():
+                return [], "cooldown"
+            try:
+                async with asyncio.timeout(10):
+                    _API_SENT.set(True)
+                    rows = await api_search(await self._get_client(), provider, key, query,
+                        mode=mode, since=since, until=until, base_url=self._deepseek_base_url)
+                return [SearchResult(**row) for row in rows], "ok" if rows else "empty"
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                if code in {401, 402, 403, 429}:
+                    self._blocked_until[provider] = time.monotonic() + 60
+                return [], {401: "unauthorized", 402: "insufficient_balance", 403: "blocked", 429: "blocked"}.get(code, "error")
+            except (TimeoutError, httpx.TimeoutException):
+                return [], "timeout"
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+                return [], "error"
         if provider != "tavily":
             return [], "free_only"
         denied = self._eligibility_denials.get(provider)
@@ -738,7 +763,8 @@ class SearchService:
             if previous is None or quality(item) > quality(previous):
                 unique[url] = replace(item, url=url)
         for item in unique.values():
-            score = relevance(query, item.title + " " + (item.page_text or item.snippet) + " " + (urllib.parse.urlsplit(item.url).hostname or ""))
+            score = relevance(query, item.title + " " + (item.page_text or item.snippet) + " " + (urllib.parse.urlsplit(item.url).hostname or ""),
+                semantic_score=item.rerank_score if item.provider == "deepseek" else None)
             if item.provider == "official_feed" and official_release_feed(query):
                 # The feed already fixes the product. A requested comparison
                 # can span two announcements; neither must mention both names.
@@ -763,6 +789,22 @@ class SearchService:
 
     async def _page(self, result, query):
         try:
+            if self.selected_provider() == "deepseek":
+                key = self._credentials.get("deepseek")
+                if not key:
+                    return replace(result, page_status="unavailable")
+                async with asyncio.timeout(8):
+                    response = await (await self._get_client()).post(
+                        f"{self._deepseek_base_url}/v1/tools/fetch", json={"url": result.url},
+                        headers={"Authorization": f"Bearer {key}"}, timeout=8.0)
+                    response.raise_for_status()
+                    if len(response.content) > 1_000_000:
+                        raise ValueError("Fetch response too large")
+                    text = response.json().get("content", "")
+                    if not isinstance(text, str):
+                        raise ValueError("Invalid fetch response")
+                    return replace(result, page_text=clean_text(text, 12000),
+                        page_status="read" if text.strip() else "unavailable", content_truncated=len(text) > 12000)
             if self._page_client is None or self._page_client.is_closed:
                 self._page_client = httpx.AsyncClient(timeout=1.7, trust_env=False)
             async with asyncio.timeout(1.7):
@@ -904,9 +946,17 @@ class SearchService:
         selected = self.selected_provider()
         if selected != "free":
             providers.insert(0, (selected, query))
-        if official_release_feed(query):
+        if selected == "deepseek":
+            providers = [("deepseek", scoped + period)]
+            if fallback_query and fallback_query.casefold() != query.casefold():
+                providers.append(("deepseek", fallback_query + period))
+            elif scoped != query:
+                providers.append(("deepseek", query + period))
+        elif official_release_feed(query):
             providers.insert(0, ("official_feed", query))
         providers = [(name, actual if len(actual) <= _MAX_QUERY_CHARS else query) for name, actual in providers]
+        if selected == "deepseek":
+            providers = [(name, deepseek_query(actual)) for name, actual in providers]
         limit = min(6, len(providers))
         rank_limit = 7 if mode == "news" else 3
         skipped = set()

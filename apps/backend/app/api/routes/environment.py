@@ -158,7 +158,7 @@ async def get_environment_news(request: Request, category: str | None = None, li
 
 class SearchProviderCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["brave", "tavily", "serper"]
+    provider: Literal["deepseek", "brave", "tavily", "serper"]
 
 
 @router.post("/environment/search/check")

@@ -123,8 +123,9 @@ class RuntimeSettings:
     news_category: str = "all"
     web_search_enabled: bool = True
     web_search_notifications_enabled: bool = False
-    web_search_provider: str = "free"
-    web_search_free_only: bool = True
+    web_search_provider: str = "deepseek"
+    web_search_deepseek_migrated: bool = True
+    web_search_free_only: bool = False
     text_editor_enabled: bool = False
     text_editor_revision: int = 0
     text_editor_quick_actions: list[QuickTextAction] = field(default_factory=lambda: list(DEFAULT_QUICK_TEXT_ACTIONS))
@@ -179,14 +180,17 @@ class RuntimeSettingsStore:
             # Voice is live-only since protocol v3. Keep the field readable for
             # old settings files, but never allow a persisted flag to disable it.
             values["live_conversation_enabled"] = True
-            values["web_search_free_only"] = True
+            if not values.get("web_search_deepseek_migrated", False):
+                values["web_search_provider"] = "deepseek"
+            values["web_search_deepseek_migrated"] = True
+            values["web_search_free_only"] = values.get("web_search_provider", defaults.web_search_provider) != "deepseek"
             from apps.backend.app.voice.style import coerce_voice_style, coerce_voice_expression_level
             values["voice_tts_style"] = coerce_voice_style(values.get("voice_tts_style", defaults.voice_tts_style)).value
             values["voice_tts_expression_level"] = coerce_voice_expression_level(values.get("voice_tts_expression_level", defaults.voice_tts_expression_level)).value
             if values.get("interface_locale") not in {None, "ru", "en"}:
                 values["interface_locale"] = defaults.interface_locale
-            if values.get("web_search_provider") not in {None, "free", "brave", "tavily", "serper"}:
-                values["web_search_provider"] = "free"
+            if values.get("web_search_provider") not in {None, "deepseek", "free", "brave", "tavily", "serper"}:
+                values["web_search_provider"] = defaults.web_search_provider
             if values.get("avatar_placement") not in {None, "desktop_overlay", "in_app"}:
                 values["avatar_placement"] = defaults.avatar_placement
             for quality_key in ("avatar_in_app_quality", "avatar_desktop_quality"):
@@ -216,7 +220,8 @@ class RuntimeSettingsStore:
             except TypeError:
                 return defaults
             if (
-                payload["settings"].get("memory_mode") == "ask"
+                not payload["settings"].get("web_search_deepseek_migrated", False)
+                or payload["settings"].get("memory_mode") == "ask"
                 or (
                     persisted_coding_model is not None
                     and loaded.coding_model != persisted_coding_model

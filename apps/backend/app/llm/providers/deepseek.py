@@ -35,6 +35,17 @@ from apps.backend.app.voice.latency import latency_mark, latency_once, latency_s
 
 logger = logging.getLogger(__name__)
 
+
+def _request_messages(messages: list[ChatMessage]) -> list[dict]:
+    result = []
+    for message in messages:
+        item = message.model_dump(exclude_none=True)
+        if message.file_ids and message.role == "user":
+            item["content"] = [{"type": "file", "file_id": identifier} for identifier in message.file_ids]
+            item["content"].append({"type": "text", "text": message.content})
+        result.append(item)
+    return result
+
 _ClientKey = tuple[str, str, float, int]
 
 # One HTTP client (and therefore one connection pool) per endpoint per event
@@ -271,8 +282,8 @@ class DeepSeekProvider(LLMProvider):
             attempt_finish_reason: str | None = None
             try:
                 response = await client.chat.completions.create(
-                    model=self._model,
-                    messages=[message.model_dump(exclude_none=True) for message in messages],
+                    model="deepseek-flash" if any(m.file_ids for m in messages) else self._model,
+                    messages=_request_messages(messages),
                     temperature=temperature,
                     response_format={"type": "json_object"},
                     max_tokens=profile.max_tokens,
@@ -470,8 +481,8 @@ class DeepSeekProvider(LLMProvider):
             call_parts: dict[int, dict] = {}
             try:
                 response = await client.chat.completions.create(
-                    model=self._model,
-                    messages=[message.model_dump(exclude_none=True) for message in messages],
+                    model="deepseek-flash" if any(m.file_ids for m in messages) else self._model,
+                    messages=_request_messages(messages),
                     temperature=0.7,
                     stream=True,
                     stream_options={"include_usage": True},

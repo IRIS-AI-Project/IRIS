@@ -2,16 +2,35 @@
 from __future__ import annotations
 
 import httpx
+import re
 
 from apps.backend.app.environment.retrieval import canonical_url, clean_text, parse_date
 
-API_PROVIDERS = ("brave", "tavily", "serper")
+API_PROVIDERS = ("deepseek", "brave", "tavily", "serper")
+
+
+def deepseek_query(query: str) -> str:
+    if len(query) <= 128:
+        return query
+    pattern = r"(?<!\S)(?:-?site|lang|after|before):\S+"
+    operators = " ".join(re.findall(pattern, query))
+    text = re.sub(pattern, "", query).strip()
+    if len(operators) < 100:
+        return (text[:128 - len(operators) - bool(operators)].rstrip() + (" " + operators if operators else ""))[:128]
+    return query[:128]
 
 
 async def api_search(client: httpx.AsyncClient, provider: str, key: str, query: str,
-                     *, mode: str = "web", since: str = "", until: str = "") -> list[dict]:
+                     *, mode: str = "web", since: str = "", until: str = "",
+                     base_url: str = "https://api.deepseek.com") -> list[dict]:
     news = mode == "news"
-    if provider == "brave":
+    if provider == "deepseek":
+        # Date/site operators are prepared by SearchService. The API accepts
+        # at most 128 Unicode characters, including those operators.
+        response = await client.post(f"{base_url.rstrip('/').removesuffix('/v1')}/v1/tools/search",
+            json={"query": deepseek_query(query), "count": 10, "need_content": True},
+            headers={"Authorization": f"Bearer {key}"}, timeout=10.0)
+    elif provider == "brave":
         params = {"q": query, "count": 10, "search_lang": "ru", "extra_snippets": "true"}
         if since and until:
             params["freshness"] = f"{since[:10]}to{until[:10]}"
@@ -39,7 +58,9 @@ async def api_search(client: httpx.AsyncClient, provider: str, key: str, query: 
     if len(response.content) > 1_000_000:
         raise ValueError("Search response too large")
     payload = response.json()
-    if provider == "brave":
+    if provider == "deepseek":
+        items = payload.get("results", [])
+    elif provider == "brave":
         items = payload.get("results", []) if news else payload.get("web", {}).get("results", [])
     elif provider == "tavily":
         items = payload.get("results", [])
@@ -55,7 +76,11 @@ async def api_search(client: httpx.AsyncClient, provider: str, key: str, query: 
         title = clean_text(str(item.get("title") or ""), 120)
         date = parse_date(str(item.get("published_date") or item.get("page_age") or item.get("date") or ""))
         if url and title:
+            page_text = clean_text(str(item.get("content") or ""), 12000) if provider == "deepseek" else ""
             results.append({"title": title, "url": url,
                             "snippet": clean_text(str(item.get("content") or item.get("description") or item.get("snippet") or ""), 300),
-                            "published_at": date.isoformat() if date else "", "provider": provider})
+                            "published_at": date.isoformat() if date else "", "provider": provider,
+                            **({"page_text": page_text, "page_status": "read" if page_text else "not_read",
+                                "rerank_score": item.get("rerank_score") if isinstance(item.get("rerank_score"), (int, float)) and not isinstance(item.get("rerank_score"), bool) and 0 <= item["rerank_score"] <= 3 else None,
+                                "content_truncated": len(str(item.get("content") or "")) > 12000} if provider == "deepseek" else {})})
     return results

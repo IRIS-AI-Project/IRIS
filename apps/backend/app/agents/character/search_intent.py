@@ -101,9 +101,58 @@ def explicit_query_revision(text: str, previous_query: str, recent_messages=()) 
     if match is None:
         return None
     query = re.sub(r"(?iu)\s+(?:вс[её]|вот и вс[её]|и вс[её])[.!? ]*$", "", match[1]).strip(' .!?«»"')
-    if len(terms(query)) < 2 or len(query) > 300 or sensitive_query(query):
+    # "Just search what happened to him" changes the task, not the literal
+    # search string. Only explicit query notation may intentionally be deictic.
+    literal = bool(re.search(r"(?iu)\b(?:запрос|поиск)\s*[:—]", text)) or bool(re.fullmatch(r'[«"].+[»"]', match[1].strip()))
+    if not literal and _context_dependent_query(query):
+        return None
+    if (len(terms(query)) < 2 and not literal) or len(query) < 2 or len(query) > 300 or sensitive_query(query):
         return None
     return SearchRequest(normalize_entity(query), force_refresh=True, reason="query_revision")
+
+
+def _context_dependent_query(text: str) -> bool:
+    return bool(_REFERENCE.search(text) or re.search(r"(?iu)\b(?:что|че|чё)\s+(?:с|со|у)\b|\b(?:это|этот|эта|эти)\s+не\b", text))
+
+
+_SEARCH_FORMATS = (
+    "видео видос видосик ролик video videos clip clips viral",
+    "биография биографию biography biographical",
+    "цена цену стоимость стоимости price pricing cost",
+)
+
+
+def contextual_query_revision(text: str, previous: dict) -> SearchRequest | None:
+    """Drop a rejected search constraint while preserving the established subject."""
+    query = previous.get("requested_query") or previous.get("query")
+    if not isinstance(query, str) or not query or internet_forbidden(text) or sensitive_query(text + " " + query):
+        return None
+    if re.search(r"(?iu)\b(?:запрос|поиск)\s*[:—]", text):
+        return None
+    # An alternative after "but/rather" can name a new subject or task.
+    # Let the dialogue model resolve that instead of retaining the old one.
+    if re.search(r"(?iu)\bне\b.+\bа\s+", text):
+        return None
+    if not (_COMMAND.search(text) or _LOOKUP.search(text) or re.match(
+        r"(?iu)^\s*(?:(?:нет|ну|да|это|мне)\s*[,—]?\s+)*не\s+", text
+    )):
+        return None
+    rejected = set()
+    for match in re.finditer(r"(?iu)\bне\s+(?:(?:про|о|об)\s+)?([\w-]+)", text):
+        for group in _SEARCH_FORMATS:
+            if terms(match[1]) & terms(group):
+                rejected.update(terms(group))
+    if not rejected:
+        return None
+    words = query.split()
+    kept = [word for word in words if not terms(word) & rejected]
+    revised = " ".join(kept)
+    if kept == words or len(query_anchors(revised)) < 2:
+        return None
+    return SearchRequest(revised, force_refresh=True, mode=str(previous.get("mode") or "web"),
+        since=str(previous.get("since") or ""), until=str(previous.get("until") or ""),
+        reason="context_revision", entity=str(previous.get("canonical_entity") or ""),
+        goal="Уточнённый предмет поиска: " + revised + "\nПоследняя поправка пользователя: " + text)
 
 
 _DETAIL = re.compile(r"^\s*(?:(?:вот|прям|еще|ну|это|не|нет|да|а|давай|точнее|вернее|я имел в виду)\s+)*(?:сейчас|в\s+этом\s+году|(?:за\s+)?(?:вчера|сегодня)|недавно|другой\s+(?:вариант|анекдот)|за\s+(?:неделю|месяц))\b", re.I)
@@ -121,7 +170,7 @@ _EMPTY_TAIL = re.compile(r"\b(?:в|принципе|да|попробуй|мож
 
 
 def contextual_search(text: str) -> bool:
-    return bool(factual_detail_question(text) or _FOLLOWUP.search(text) or _RETRY.search(text) or _ACCEPT.fullmatch(text) or _DETAIL.search(text) or
+    return bool(_context_dependent_query(text) or factual_detail_question(text) or _FOLLOWUP.search(text) or _RETRY.search(text) or _ACCEPT.fullmatch(text) or _DETAIL.search(text) or
                 ((_LOOKUP.search(text) or _CHANGING.search(text)) and re.search(r"\b(?:его|нее|него|нем|ней|это|еще|заново)\b", text, re.I)))
 
 
@@ -291,6 +340,8 @@ def _request(text: str) -> SearchRequest | None:
     if event:
         return event
     command = _COMMAND.search(text) or _LOOKUP.search(text)
+    if command and _context_dependent_query(text[command.end():]):
+        return None
     if not command and not (_FRESH.search(text) or _RECENT.search(text) or _CURRENT.search(text)):
         return None
     query = text[command.end():] if command else text

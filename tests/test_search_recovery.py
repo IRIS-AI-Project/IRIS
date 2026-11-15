@@ -465,10 +465,10 @@ def test_news_state_survives_agent_recreation_but_not_other_session_or_new_topic
     assert adapter.get_recent_retrieval_state("one") == {}
 
 
-def test_upgrade_defaults_free_and_keys_are_never_external_settings(tmp_path, monkeypatch):
+def test_upgrade_defaults_deepseek_and_keys_are_never_external_settings(tmp_path, monkeypatch):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"schema_version": 1, "settings": {"news_enabled": True}}))
-    assert RuntimeSettingsStore(path).load(RuntimeSettings()).web_search_provider == "free"
+    assert RuntimeSettingsStore(path).load(RuntimeSettings()).web_search_provider == "deepseek"
     for provider in ("brave", "tavily", "serper"):
         monkeypatch.setenv(f"{provider.upper()}_API_KEY", "ignored")
     settings = Settings(_env_file=None)

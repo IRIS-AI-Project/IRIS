@@ -203,7 +203,8 @@ def create_app() -> FastAPI:
     ) if settings.timeline_v2_enabled else None
     history = TimelineHistoryAdapter(timeline_store) if timeline_store is not None else SQLiteMessageHistory(settings.database_path)
     from apps.backend.app.documents import DocumentService
-    document_service = DocumentService()
+    from apps.backend.app.llm.deepseek_files import DeepSeekFiles
+    document_service = DocumentService(DeepSeekFiles(settings))
     from apps.backend.app.reminders import ReminderService, reminder_voice_reply
     reminder_service = ReminderService(timeline_store, event_bus.publish) if timeline_store is not None else None
     runtime_defaults = RuntimeSettings(
@@ -234,7 +235,8 @@ def create_app() -> FastAPI:
     coding_bridge = CodingBridge(coding_agent_service)
     situational_coordinator = SituationalCoordinator(search_service=SearchService(
         runtime_settings=runtime_settings,
-        credentials={p: getattr(settings, f"{p}_api_key", None) for p in ("brave", "tavily", "serper")},
+        credentials={"deepseek": settings.llm_api_key, **{p: getattr(settings, f"{p}_api_key", None) for p in ("brave", "tavily", "serper")}},
+        deepseek_base_url=settings.deepseek_base_url,
         budget_path=settings.app_data_path / "search-budget.sqlite3",
     ))
     app.state.voice_tts_style = runtime_settings.voice_tts_style
@@ -1539,6 +1541,7 @@ def create_app() -> FastAPI:
         await speech_orchestrator.close()
         await avatar_service.close()
         await situational_coordinator.close()
+        await document_service.close()
         voice_service_close = getattr(voice_service, "close", None)
         if voice_service_close is not None:
             await voice_service_close()

@@ -34,7 +34,7 @@ export function EnvironmentSettings({ settings, developerMode, onSaveSetting, on
   const weatherEnabled = settings.weather_enabled ?? true;
   const newsEnabled = settings.news_enabled ?? true;
   const webSearchEnabled = settings.web_search_enabled ?? true;
-  const searchProvider = settings.web_search_provider === "tavily" ? "tavily" : "free";
+  const searchProvider = settings.web_search_provider ?? "deepseek";
   const newsCategory = settings.news_category ?? "all";
   useEffect(() => { onDirtyChange?.(cityBusy || cityInput.trim() !== (settings.location_city ?? "").trim()); }, [cityInput, cityBusy, settings.location_city, onDirtyChange]);
 
@@ -176,13 +176,13 @@ export function EnvironmentSettings({ settings, developerMode, onSaveSetting, on
         description="Этапы проверки и источники можно раскрыть в уведомлении. История сохраняется и без уведомлений."
         onChange={checked => saveSetting({ web_search_notifications_enabled: checked })} />}
       <label>Источник веб-поиска
-        <CustomSelect value={searchProvider} disabled={!webSearchEnabled} onChange={event => saveSetting({ web_search_provider: event.target.value as "free" | "tavily" })}>
-          <option value="free">Бесплатные источники</option><option value="tavily">Tavily (API)</option>
+        <CustomSelect value={searchProvider} disabled={!webSearchEnabled} onChange={event => saveSetting({ web_search_provider: event.target.value as "deepseek" | "free" | "tavily" })}>
+          <option value="deepseek">DeepSeek (API)</option><option value="free">Бесплатные источники</option><option value="tavily">Tavily (API)</option>
         </CustomSelect>
-        <small>При отсутствии ключа Tavily или исчерпании бесплатной квоты Iris использует открытые источники.</small>
+        <small>{searchProvider === "deepseek" ? "Поиск и чтение страниц используют основной ключ DeepSeek и оплачиваются по тарифу API." : "При отсутствии ключа Tavily или исчерпании бесплатной квоты Iris использует открытые источники."}</small>
       </label>
       <div className="settings-source-key-row">
-        <span>{settings.search_api_keys_configured?.tavily ? "Ключ Tavily настроен" : "Ключ Tavily не настроен"}</span>
+        <span>{searchProvider === "deepseek" ? (settings.api_key_configured ? "Ключ DeepSeek настроен" : "Ключ DeepSeek не настроен") : (settings.search_api_keys_configured?.tavily ? "Ключ Tavily настроен" : "Ключ Tavily не настроен")}</span>
         <MaterialButton materialKey="environment.open-api-keys" type="button" className="secondary settings-inline-link" onClick={onOpenApiKeys}>
           Настроить API-ключ<ArrowUpRight size={15} aria-hidden="true" />
         </MaterialButton>

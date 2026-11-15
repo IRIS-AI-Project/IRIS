@@ -90,7 +90,7 @@ def terms(value: str) -> set[str]:
     return out
 
 
-def relevance(query: str, text: str) -> float:
+def relevance(query: str, text: str, *, semantic_score: float | None = None) -> float:
     query = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", query)
     q, candidate = terms(query), terms(text)
     if not q:
@@ -121,6 +121,11 @@ def relevance(query: str, text: str) -> float:
     if not event_year:
         content_q = {w for w in content_q if not re.fullmatch(r"20\d{2}", w)}
     overlap = len(content_q & candidate) / len(content_q) if content_q else len(q & candidate) / len(q)
+    # DeepSeek's semantic ranking can connect names translated into another
+    # script. Keep product/version anchors mandatory; lexical overlap alone
+    # must not discard a strong result just because its wording is different.
+    if anchors and semantic_score is not None and 1.5 <= semantic_score <= 3:
+        return max(overlap, .34)
     return overlap if overlap >= 0.34 else 0.0
 
 

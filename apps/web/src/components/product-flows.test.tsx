@@ -141,6 +141,20 @@ describe("explicit audio checks", () => {
 });
 
 describe("attachment lifecycle", () => {
+  it("accepts images via DeepSeek and shows whole-file details without local fragment controls", async () => {
+    api.requestJson.mockImplementation((_path: string, options?: RequestInit) => Promise.resolve(options?.method === "POST"
+      ? { id: "image-1", name: "scan.png", provider: "deepseek", whole_file: true, fragment_count: 0, ephemeral: true }
+      : { document: null }));
+    render(<><DocumentAttachment sessionId="session" onBusyChange={vi.fn()} /><NotificationHost /></>);
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("Выбрать документ"), { target: { files: [new File(["image"], "scan.png")] } });
+    await screen.findByText("Документ прикреплён");
+    fireEvent.click(screen.getByRole("button", { name: "Открыть прикреплённый документ" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("DeepSeek читает файл целиком");
+    expect(screen.queryByRole("button", { name: "Открыть фрагмент" })).toBeNull();
+    expect(screen.queryByLabelText("ID фрагмента документа")).toBeNull();
+  });
+
   it("cancels both transport and pending server upload and ignores its late result", async () => {
     const upload = deferred<unknown>();
     api.requestJson.mockImplementation((path: string, options?: RequestInit) => options?.method === "POST" ? upload.promise : Promise.resolve({ document: null }));
@@ -194,7 +208,7 @@ describe("attachment lifecycle", () => {
   it("reports invalid files in the notification area without starting an upload", async () => {
     render(<><DocumentAttachment sessionId="session" onBusyChange={vi.fn()} /><NotificationHost /></>);
     await act(async () => {});
-    fireEvent.change(screen.getByLabelText("Выбрать документ"), { target: { files: [new File(["image"], "image.png")] } });
+    fireEvent.change(screen.getByLabelText("Выбрать документ"), { target: { files: [new File(["binary"], "program.exe")] } });
     expect(screen.getByText("Не удалось прикрепить документ").closest(".notification-host")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Выбрать файл" })).toBeInTheDocument();
     expect(api.requestJson.mock.calls.some(([, options]) => options?.method === "POST")).toBe(false);

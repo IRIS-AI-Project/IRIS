@@ -75,8 +75,8 @@ class PublicSettingsResponse(BaseModel):
     news_category: str = "all"
     web_search_enabled: bool = True
     web_search_notifications_enabled: bool = False
-    web_search_provider: str = "free"
-    web_search_free_only: bool = True
+    web_search_provider: str = "deepseek"
+    web_search_free_only: bool = False
     search_api_keys_configured: dict[str, bool] = Field(default_factory=dict)
 
 

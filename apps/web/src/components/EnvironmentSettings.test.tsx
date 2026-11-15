@@ -51,7 +51,7 @@ describe("окружение и гео", () => {
   });
   it("оставляет управление ключами в отдельном разделе и не меняет режим при открытии", async () => {
     render(<Harness initial={{ search_api_keys_configured: { tavily: true } }} />);
-    expect(screen.getByLabelText(/Источник веб-поиска/)).toHaveValue("free");
+    expect(screen.getByLabelText(/Источник веб-поиска/)).toHaveValue("deepseek");
     expect(screen.queryByLabelText(/API-ключ поискового сервиса/)).toBeNull();
     expect(document.querySelector('input[type="password"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Настроить API-ключ" }));

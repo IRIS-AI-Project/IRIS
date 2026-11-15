@@ -871,7 +871,7 @@ export function SettingsPage({
             settings={{ ...settings, ...environmentValues }}
             developerMode={developerModeEnabled}
             onSaveSetting={saveEnvironmentSetting}
-            onOpenApiKeys={() => openSettingsSection("api-keys", "credential-tavily")}
+            onOpenApiKeys={() => openSettingsSection("api-keys", settings.web_search_provider === "tavily" ? "credential-tavily" : "credential-deepseek")}
           />
         </div></ViewActivity>
 

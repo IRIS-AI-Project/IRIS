@@ -10,8 +10,9 @@ import { AppDialog } from "./AppDialog";
 import { animateButtonPress } from "../animations";
 import { notify } from "../notifications";
 
-type AttachedDocument = { id: string; name: string; fragment_count: number; ephemeral: boolean; expires_in_seconds?: number };
+type AttachedDocument = { id: string; name: string; fragment_count: number; ephemeral: boolean; expires_in_seconds?: number; provider?: string; whole_file?: boolean };
 type Source = { id: string; label: string; text: string };
+const ACCEPTED_FILES = ".txt,.md,.csv,.json,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.epub,.mobi,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff";
 
 export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, variant = "default", onInteractionChange }: {
   sessionId: string | null; disabled?: boolean; onBusyChange: (busy: boolean) => void;
@@ -107,8 +108,8 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
   }, [document]);
   const upload = async (file: File) => {
     if (!sessionId) return;
-    if (!/\.(txt|md|pdf)$/i.test(file.name) || file.size === 0 || file.size > 10 * 1024 * 1024) {
-      reportFailure("Выберите непустой TXT, MD или текстовый PDF до 10 МБ."); return;
+    if (!ACCEPTED_FILES.split(",").some(suffix => file.name.toLowerCase().endsWith(suffix)) || file.size === 0 || file.size > 10 * 1024 * 1024) {
+      reportFailure("Выберите непустой документ, таблицу или изображение до 10 МБ."); return;
     }
     cancelUpload(); setError(""); changeBusy(true);
     const token = generation.current;
@@ -117,7 +118,7 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
     active.current = { id, session: sessionId, controller };
     const uploadNoticeId = `document-upload.${id}`;
     noticeId.current = uploadNoticeId;
-    notify.info("Читаю документ…", file.name, {
+    notify.info("Читаю документ…", `${file.name} · обработка в DeepSeek`, {
       id: uploadNoticeId,
       duration: "persistent",
       actions: [{ label: "Отменить чтение", onClick: cancelUpload }],
@@ -167,7 +168,7 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
     return () => { picker?.removeEventListener("cancel", finish); window.removeEventListener("focus", finish); };
   }, [onInteractionChange]);
   if (variant === "desktop") return <div className="desktop-document">
-    <input ref={input} type="file" accept=".txt,.md,.pdf" hidden aria-label="Выбрать документ" onChange={event => {
+    <input ref={input} type="file" accept={ACCEPTED_FILES} hidden aria-label="Выбрать документ" onChange={event => {
       onInteractionChange?.(false); const file=event.target.files?.[0]; event.target.value=""; if (file) void upload(file);
     }} />
     <MaterialButton materialKey="desktop.document.choose" appearance="plain" className="desktop-document-action" ref={button} type="button" disabled={disabled || !sessionId || busy} onClick={chooseFile}>
@@ -179,7 +180,7 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
     {error && <p role="alert">{error}</p>}
   </div>;
   return <div className="document-attachment">
-    <input ref={input} type="file" accept=".txt,.md,.pdf" hidden aria-label="Выбрать документ" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} />
+    <input ref={input} type="file" accept={ACCEPTED_FILES} hidden aria-label="Выбрать документ" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} />
     <MaterialButton
       materialKey="document.attach"
       ref={button}
@@ -190,7 +191,7 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
       aria-haspopup={document ? "dialog" : undefined}
       aria-busy={busy}
       data-attached={Boolean(document)}
-      title={document ? document.name : "TXT, MD или текстовый PDF"}
+      title={document ? document.name : "Документ, таблица или изображение · DeepSeek · до 10 МБ"}
       disabled={disabled || !sessionId || busy}
       onClick={event => {
         animateButtonPress(event.currentTarget);
@@ -204,12 +205,12 @@ export function DocumentAttachment({ sessionId, disabled = false, onBusyChange, 
         <p>Файл доступен Iris в текущей беседе.</p>
         <Disclosure materialKey="document.usage" label={<>Как используется файл</>}>
 
-          <p>Для ответа Iris отправляет нужные фрагменты внешней модели. В личную память они автоматически не добавляются. В истории остаются ответ и ссылки, без исходного текста файла. Прикрепите файл заново после его удаления из беседы, перезапуска Iris или через 2 часа.</p>
+          <p>{document?.provider === "deepseek" ? "Файл целиком загружается в DeepSeek. Для PDF, Word, презентаций и изображений распознаются текст и иллюстрации; разбор оплачивается по тарифу API. Файл не добавляется в личную память и историю Iris. При удалении или замене Iris отправляет запрос на удаление облачной копии; срок её хранения — до 2 часов. После перезапуска или истечения срока прикрепите файл заново." : "Для ответа Iris отправляет нужные фрагменты внешней модели. В личную память они автоматически не добавляются. В истории остаются ответ и ссылки, без исходного текста файла. Прикрепите файл заново после его удаления из беседы, перезапуска Iris или через 2 часа."}</p>
         </Disclosure>
-        <div className="document-source-actions">
+        {document?.provider === "deepseek" ? <p>DeepSeek читает файл целиком. Страницы, разделы и цитаты можно уточнить в чате; просмотр извлечённого текста недоступен.</p> : <div className="document-source-actions">
           <label>Ссылка из ответа<input aria-label="ID фрагмента документа" value={sourceId} disabled={busy} onChange={event => setSourceId(event.target.value.toUpperCase().replace(/[^D0-9]/g, ""))} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); void inspectSource(); } }} placeholder="D1" /></label>
           <MaterialButton materialKey="document.inspect" className="secondary" type="button" disabled={busy} onClick={() => void inspectSource()}>Открыть фрагмент</MaterialButton>
-        </div>
+        </div>}
         {error && <p className="error-text" role="alert">{error}</p>}
         <div className="dialog-actions">
           <MaterialButton materialKey="document.replace" className="secondary" type="button" disabled={disabled || busy} onClick={chooseFile}>Заменить файл</MaterialButton>

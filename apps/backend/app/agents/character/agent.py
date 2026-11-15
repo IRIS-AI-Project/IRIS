@@ -46,7 +46,7 @@ from apps.backend.app.environment.retrieval import internet_forbidden, sensitive
 from apps.backend.app.environment.search_service import SearchService, SearchTurnBudget, SearchResult
 from apps.backend.app.environment.news_intent import news_request_text
 from apps.backend.app.agents.character.news_followup import dependent_news_question, select_news_reference, reference_context
-from apps.backend.app.agents.character.search_intent import SearchRequest as _SearchRequest, plan_search, needs_query_planner, contextual_search, search_requested, supplied_material, material_continuation, query_anchors, refinement_preserves_subject, factual_detail_question, requires_article_evidence, medical_fact_request, explicit_query_revision
+from apps.backend.app.agents.character.search_intent import SearchRequest as _SearchRequest, plan_search, needs_query_planner, contextual_search, search_requested, supplied_material, material_continuation, query_anchors, refinement_preserves_subject, factual_detail_question, requires_article_evidence, medical_fact_request, explicit_query_revision, contextual_query_revision
 from apps.backend.app.environment.release_evidence import release_question, release_domains, release_evidence_problem
 from apps.backend.app.schemas.character import (
     AffectCue,
@@ -78,7 +78,12 @@ _SEARCH_BRIDGE_RULE = ('Проверка ещё идёт. Придумай од�
     'Верни JSON {"reply":"..."}, без URL и служебных команд.')
 _NO_LOOKUP_RULE = "Текущий ход — реакция, приветствие или поправка, а не просьба проверить факты. Не вызывай поиск и не обещай его. Ответь на саму реплику; краткого согласия достаточно."
 _SUPPLIED_MATERIAL_RULE = "Пользователь предоставил готовый материал. Используй его для запрошенного действия и учти предыдущую просьбу. Не отправляй материал в поиск, не объявляй проверку и не дополняй его выдуманным продолжением."
-_SKILL_DECISION_RULE = "Перед ответом выбери доступный навык или ответ без него. Свежий факт и недостающая деталь прошлого сообщения требуют проверки. Для событий используй web_search mode=news и заданный период since/until. Сохрани объект, место, время; последствия не доказывают причину или цель. Вызов заменяет обещание. Текущая дата: {date}. Не подставляй прошлый год."
+_SKILL_DECISION_RULE = ("Перед ответом выбери доступный навык или ответ без него. Свежий факт и недостающая деталь прошлого сообщения требуют проверки. "
+    "Для событий используй web_search mode=news и заданный период since/until. Сохрани объект, место, время; последствия не доказывают причину или цель. "
+    "Последняя поправка пользователя важнее прежней гипотезы: убери отвергнутый формат или условие, сохрани названного им человека или организацию. "
+    "Местоимения разрешай по диалогу; слова поправки не являются буквальным поисковым запросом. "
+    "Если человек или компания не названы и контекст не определяет их однозначно, уточни объект, не выбирай случайного человека из выдачи. "
+    "Пустая выдача по одной формулировке не доказывает отсутствия события. Вызов заменяет обещание. Текущая дата: {date}. Не подставляй прошлый год.")
 _LIVE_WEB_SEARCH_RE = re.compile(r"^\s*\[\[web_search\s*:\s*(?P<query>[^\r\n]{1,1000})\]\]\s*$", re.IGNORECASE)
 
 if TYPE_CHECKING:
@@ -195,6 +200,7 @@ class CharacterAgent:
         self._current_user_action_text = ""
         self._document_service = document_service
         self._document_prompt = ""
+        self._document_file_ids = []
         self.last_document_context = None
         self.last_context_memories: list[dict] = []
         self._skills = SkillRegistry()
@@ -414,11 +420,14 @@ class CharacterAgent:
                 else None
             )
         self._document_prompt = ""
+        self._document_file_ids = []
         self.last_document_context = None
         if self._document_service is not None:
             document_context = self._document_service.current_context(session_id, effective_text)
             if document_context is not None:
                 self._document_prompt, self.last_document_context = document_context
+                file_id = self._document_service.current_file_id(session_id)
+                self._document_file_ids = [file_id] if file_id else []
                 if not re.search(r"\b(?:в\s+интернете|в\s+сети|web\s+search|сверь\s+с\s+(?:сайтом|источниками)|найди\s+(?:внешние\s+источники|новости))\b", user_text, re.I):
                     self._turn_web_forbidden = True
         self.last_context_memories = list(built_context.diagnostics.get("selected_memory_records", [])) if built_context else []
@@ -581,6 +590,11 @@ class CharacterAgent:
         if isinstance(previous_web, dict) and self._web_search_enabled():
             revision = explicit_query_revision(user_text, str(previous_web.get("requested_query") or previous_web.get("query") or ""), context)
             if revision is not None:
+                return revision
+            revision = contextual_query_revision(user_text, previous_web)
+            if revision is not None:
+                self._search_goal = revision.goal
+                self._retrieval_deadline = time.monotonic() + 15
                 return revision
         if factual_detail_question(user_text) and isinstance(previous_web, dict) and previous_web.get("sources"):
             previous_query = str(previous_web.get("requested_query") or previous_web.get("query") or "")
@@ -1522,7 +1536,7 @@ class CharacterAgent:
             messages.append(ChatMessage(role="system", content=variety + "\n" + self._speech_feedback_prompt))
         if skill_rule:
             messages.append(ChatMessage(role="system", content=_SKILL_DECISION_RULE.format(date=datetime.now().astimezone().date().isoformat())))
-        messages.append(ChatMessage(role="user", content=prompt_user_text))
+        messages.append(ChatMessage(role="user", content=prompt_user_text, file_ids=self._document_file_ids))
         empty_reply = self._empty_model_fallback(prompt_user_text)
 
         llm_response = await self._skill_model_generate(messages)
@@ -2408,7 +2422,7 @@ class CharacterAgent:
             messages.append(ChatMessage(role="system", content=_SKILL_DECISION_RULE.format(date=datetime.now().astimezone().date().isoformat())))
         if room_context:
             messages.append(ChatMessage(role="system", content=room_context))
-        messages.append(ChatMessage(role="user", content=prompt_user_text))
+        messages.append(ChatMessage(role="user", content=prompt_user_text, file_ids=self._document_file_ids))
         if self._search_bridge_spoken:
             messages.append(self._bridge_continuation_message())
         chunks: list[str] = [search_acknowledgement] if search_acknowledgement else []

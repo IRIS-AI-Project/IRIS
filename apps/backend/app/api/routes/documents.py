@@ -1,10 +1,9 @@
-import asyncio
 import re
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from apps.backend.app.api.routes.conversation import require_active_session_async
-from apps.backend.app.documents import DocumentError, MAX_BYTES, extract_document
+from apps.backend.app.documents import DocumentError, MAX_BYTES
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -20,11 +19,12 @@ async def upload_document(request: Request, session_id: str = Form(...), upload_
             data.extend(chunk)
             if len(data) > MAX_BYTES:
                 raise DocumentError("Выберите файл размером до 10 МБ.")
-        name, units = await asyncio.to_thread(extract_document, file.filename or "", bytes(data), lambda: request.app.state.document_service.cancelled(session_id, upload_id))
+        document = await request.app.state.document_service.upload(session_id, upload_id, file.filename or "", bytes(data))
         if await request.is_disconnected():
             request.app.state.document_service.cancel(session_id, upload_id)
+            await request.app.state.document_service.flush_deletes()
             raise HTTPException(499, "Загрузка отменена")
-        metadata = request.app.state.document_service.put(session_id, upload_id, name, units).metadata()
+        metadata = document.metadata()
         request.app.state.event_bus.publish("documents.changed", "info", "Conversation document updated", {"session_id": session_id})
         return metadata
     except DocumentError as exc:
@@ -36,12 +36,16 @@ async def upload_document(request: Request, session_id: str = Form(...), upload_
 @router.get("/current")
 async def current_document(request: Request, session_id: str):
     await require_active_session_async(request, session_id)
-    return {"document": request.app.state.document_service.current(session_id)}
+    metadata = request.app.state.document_service.current(session_id)
+    await request.app.state.document_service.flush_deletes()
+    return {"document": metadata}
 
 
 @router.delete("/{identifier}")
-def delete_document(request: Request, identifier: str, session_id: str):
+async def delete_document(request: Request, identifier: str, session_id: str):
+    await require_active_session_async(request, session_id)
     request.app.state.document_service.cancel(session_id, identifier)
+    await request.app.state.document_service.flush_deletes()
     request.app.state.event_bus.publish("documents.changed", "info", "Conversation document removed", {"session_id": session_id})
     return {"removed": True}
 
